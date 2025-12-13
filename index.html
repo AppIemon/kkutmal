@@ -241,6 +241,17 @@
             background: #667eea;
             color: white;
         }
+        .turn-btn:disabled {
+            background: #ccc;
+            color: #666;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        .turn-btn:disabled:hover {
+            background: #ccc;
+            color: #666;
+            transform: none;
+        }
         .input-container {
             position: fixed;
             bottom: 0;
@@ -541,6 +552,13 @@
             <button class="mode-btn" onclick="openSearch()">🔍 나라 검색</button>
         </div>
         <div id="gameArea" class="game-area">
+            <div id="difficultySelection" class="turn-selection" style="margin-bottom: 15px;">
+                <div style="margin-right: 20px; line-height: 40px; font-weight: bold;">난이도:</div>
+                <button class="turn-btn selected" onclick="selectDifficulty('easy')" id="difficultyBtnEasy">쉬움</button>
+                <button class="turn-btn" onclick="selectDifficulty('normal')" id="difficultyBtnNormal">보통</button>
+                <button class="turn-btn" onclick="selectDifficulty('hard')" id="difficultyBtnHard">어려움</button>
+                <button class="turn-btn" onclick="selectDifficulty('hell')" id="difficultyBtnHell">지옥</button>
+            </div>
             <div id="turnSelection" class="turn-selection">
                 <div style="margin-right: 20px; line-height: 40px; font-weight: bold;">선공/후공 선택:</div>
                 <button class="turn-btn selected" onclick="selectTurn('user')" id="turnBtnUser">나 먼저 (선공)</button>
@@ -761,6 +779,7 @@
             usedCountries: [],
             lastCountry: null,
             gameMode: 'vsComputer',
+            difficulty: 'normal',
             gameEnded: false,
             firstPlayer: 'user', 
             currentPlayer: 'user', 
@@ -777,6 +796,51 @@
         }
         function saveStats(stats) {
             localStorage.setItem('countryGameStats', JSON.stringify(stats));
+        }
+        function saveGameState() {
+            const stateToSave = {
+                usedCountries: gameState.usedCountries,
+                lastCountry: gameState.lastCountry,
+                gameMode: gameState.gameMode,
+                difficulty: gameState.difficulty,
+                gameEnded: gameState.gameEnded,
+                firstPlayer: gameState.firstPlayer,
+                currentPlayer: gameState.currentPlayer,
+                firstTurnDone: gameState.firstTurnDone,
+                firstTurnCountry: gameState.firstTurnCountry,
+                gameHistory: gameHistory
+            };
+            localStorage.setItem('countryGameState', JSON.stringify(stateToSave));
+        }
+        function loadGameState() {
+            const savedState = localStorage.getItem('countryGameState');
+            if (savedState) {
+                try {
+                    const state = JSON.parse(savedState);
+                    if (state.usedCountries && state.usedCountries.length > 0) {
+                        gameState.usedCountries = state.usedCountries;
+                        gameState.lastCountry = state.lastCountry;
+                        gameState.gameMode = state.gameMode || 'vsComputer';
+                        gameState.difficulty = state.difficulty || 'normal';
+                        gameState.gameEnded = state.gameEnded || false;
+                        gameState.firstPlayer = state.firstPlayer || 'user';
+                        gameState.currentPlayer = state.currentPlayer || 'user';
+                        gameState.firstTurnDone = state.firstTurnDone || false;
+                        gameState.firstTurnCountry = state.firstTurnCountry || null;
+                        if (state.gameHistory && state.gameHistory.length > 0) {
+                            gameHistory.length = 0;
+                            gameHistory.push(...state.gameHistory);
+                        }
+                        return true;
+                    }
+                } catch (e) {
+                    console.error('게임 상태 복원 실패:', e);
+                }
+            }
+            return false;
+        }
+        function clearGameState() {
+            localStorage.removeItem('countryGameState');
         }
         function updateStatsDisplay() {
             const stats = getStats();
@@ -801,6 +865,7 @@
             stats.wins++;
             stats.totalGames++;
             saveStats(stats);
+            saveGameState();
             updateStatsDisplay();
         }
         function recordLoss() {
@@ -808,6 +873,7 @@
             stats.losses++;
             stats.totalGames++;
             saveStats(stats);
+            saveGameState();
             updateStatsDisplay();
         }
         function surrender() {
@@ -822,14 +888,64 @@
                 updateGameInfo();
             }
         }
+        function computerSurrender() {
+            if (gameState.gameEnded) {
+                return;
+            }
+            gameState.gameEnded = true;
+            showMessage('🎉 축하합니다! 컴퓨터가 기권했습니다. 당신이 승리했습니다!', 'success');
+            recordWin();
+            updateGameInfo();
+        }
+        function isComputerTrapped() {
+            const available = getAvailableCountries(gameState.usedCountries, gameState.lastCountry);
+            if (available.length === 0) {
+                return true;
+            }
+            const allEndWithDOrR = available.every(country => {
+                const lastInitial = getLastCharInitial(country);
+                return lastInitial === 'ㄷ' || lastInitial === 'ㄹ';
+            });
+            if (allEndWithDOrR && available.length > 0) {
+                return true;
+            }
+            const grenadaUsed = gameState.usedCountries.includes('그레나다');
+            const dToGCount = gameState.usedCountries.filter(c => {
+                const first = getFirstCharInitial(c);
+                const last = getLastCharInitial(c);
+                return first === 'ㄷ' && last === 'ㄱ';
+            }).length;
+            if (dToGCount === 1 && !grenadaUsed) {
+                const dEnding = available.filter(c => getLastCharInitial(c) === 'ㄷ');
+                if (dEnding.length === 0) {
+                    return true;
+                }
+            }
+            const rToYCount = gameState.usedCountries.filter(c => {
+                const first = getFirstCharInitial(c);
+                const last = getLastCharInitial(c);
+                return first === 'ㄹ' && last === 'ㅇ';
+            }).length;
+            const yToRCount = gameState.usedCountries.filter(c => {
+                const first = getFirstCharInitial(c);
+                const last = getLastCharInitial(c);
+                return first === 'ㅇ' && last === 'ㄹ';
+            }).length;
+            if (rToYCount - yToRCount > 0) {
+                const rEnding = available.filter(c => getLastCharInitial(c) === 'ㄹ');
+                if (rEnding.length === 0) {
+                    return true;
+                }
+            }
+            return false;
+        }
         function exportGameHistory() {
             const historyEl = document.getElementById('history');
             if (!historyEl || historyEl.children.length === 0) {
                 showMessage('저장할 게임 기록이 없습니다.', 'error');
                 return;
             }
-            let textHistory = '\u200b'.repeat(500);
-            textHistory += '나라 끝말잇기 게임 기록\n';
+            let textHistory = '나라 끝말잇기 게임 기록\n';
             textHistory += '='.repeat(30) + '\n\n';
             gameHistory.forEach((item, index) => {
                 const playerName = item.player === 'user' ? '나' : '컴퓨터';
@@ -849,30 +965,31 @@
                 document.body.removeChild(textarea);
                 showMessage('게임 기록이 클립보드에 복사되었습니다!', 'success');
             });
-            const containerEl = document.querySelector('.container');
-            html2canvas(containerEl, {
-                backgroundColor: '#ffffff',
-                scale: 2,
-                useCORS: true,
-                logging: false,
-                windowWidth: containerEl.scrollWidth,
-                windowHeight: containerEl.scrollHeight
-            }).then(canvas => {
-                canvas.toBlob(blob => {
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `나라끝말잇기_${new Date().toISOString().slice(0, 10)}_${Date.now()}.png`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                });
-            }).catch(() => {
-                showMessage('이미지 저장에 실패했습니다. 텍스트는 복사되었습니다.', 'error');
-            });
+        }
+        function selectDifficulty(difficulty) {
+            if (gameState.firstTurnDone) {
+                showMessage('게임이 시작된 후에는 난이도를 변경할 수 없습니다.', 'error');
+                return;
+            }
+            gameState.difficulty = difficulty;
+            document.getElementById('difficultyBtnEasy').classList.remove('selected');
+            document.getElementById('difficultyBtnNormal').classList.remove('selected');
+            document.getElementById('difficultyBtnHard').classList.remove('selected');
+            document.getElementById('difficultyBtnHell').classList.remove('selected');
+            const difficultyNames = {
+                'easy': '쉬움',
+                'normal': '보통',
+                'hard': '어려움',
+                'hell': '지옥'
+            };
+            document.getElementById('difficultyBtn' + difficulty.charAt(0).toUpperCase() + difficulty.slice(1)).classList.add('selected');
+            showMessage(`난이도가 "${difficultyNames[difficulty]}"로 설정되었습니다.`, 'info');
         }
         function selectTurn(player) {
+            if (gameState.firstTurnDone) {
+                showMessage('게임이 시작된 후에는 선공/후공을 변경할 수 없습니다.', 'error');
+                return;
+            }
             gameState.firstPlayer = player;
             gameState.currentPlayer = player;
             document.getElementById('turnBtnUser').classList.remove('selected');
@@ -940,9 +1057,44 @@
             }
         }
         window.addEventListener('DOMContentLoaded', function() {
+            const loaded = loadGameState();
+            if (loaded) {
+                const difficultyNames = {
+                    'easy': '쉬움',
+                    'normal': '보통',
+                    'hard': '어려움',
+                    'hell': '지옥'
+                };
+                document.getElementById('difficultyBtnEasy').classList.remove('selected');
+                document.getElementById('difficultyBtnNormal').classList.remove('selected');
+                document.getElementById('difficultyBtnHard').classList.remove('selected');
+                document.getElementById('difficultyBtnHell').classList.remove('selected');
+                document.getElementById('difficultyBtn' + gameState.difficulty.charAt(0).toUpperCase() + gameState.difficulty.slice(1)).classList.add('selected');
+                document.getElementById('turnBtnUser').classList.remove('selected');
+                document.getElementById('turnBtnComputer').classList.remove('selected');
+                if (gameState.firstPlayer === 'user') {
+                    document.getElementById('turnBtnUser').classList.add('selected');
+                } else {
+                    document.getElementById('turnBtnComputer').classList.add('selected');
+                }
+                if (gameState.firstTurnDone) {
+                    disableGameSettings();
+                }
+                const historyEl = document.getElementById('history');
+                historyEl.innerHTML = '';
+                gameHistory.forEach(item => {
+                    const historyItem = document.createElement('div');
+                    historyItem.className = `history-item ${item.player}`;
+                    historyItem.textContent = `${item.player === 'user' ? '👤 나' : '🤖 컴퓨터'}: ${item.country}`;
+                    historyEl.appendChild(historyItem);
+                });
+                historyEl.scrollTop = historyEl.scrollHeight;
+                showMessage('이전 게임이 복원되었습니다.', 'info');
+            }
             updateUndoButton();
             updateAvailableCountries();
             updateStatsDisplay();
+            updateGameInfo();
         });
         function openSearch() {
             const overlay = document.getElementById('searchOverlay');
@@ -1036,6 +1188,7 @@
             updateAvailableCountries();
             updateGameInfo();
             updateUndoButton();
+            saveGameState();
             showMessage(itemsToRemove === 2 ? '한 턴을 무르기했습니다.' : '무르기를 실행했습니다.', 'info');
         }
         function submitCountry() {
@@ -1057,6 +1210,7 @@
                 gameState.firstTurnDone = true;
                 gameState.firstTurnCountry = null;
                 addToHistory(country + ' (뺏기)', 'user');
+                saveGameState();
                 showMessage(`"${country}"를 뺏었습니다! 이제 당신이 선공입니다.`, 'success');
                 input.value = '';
                 updateAvailableCountries();
@@ -1078,7 +1232,12 @@
                 gameState.usedCountries.push(country);
                 gameState.lastCountry = country;
                 gameState.currentPlayer = 'computer';
+                if (!gameState.firstTurnDone) {
+                    gameState.firstTurnDone = true;
+                    disableGameSettings();
+                }
                 addToHistory(country, 'user');
+                saveGameState();
                 showMessage(`좋습니다! "${country}" 다음에 올 수 있는 나라를 찾아보세요.`, 'success');
                 input.value = '';
                 updateAvailableCountries();
@@ -1106,6 +1265,7 @@
             gameState.lastCountry = country;
             gameState.currentPlayer = 'computer';
             addToHistory(country, 'user');
+            saveGameState();
             showMessage(`정답입니다! "${country}" 다음에 올 수 있는 나라를 찾아보세요.`, 'success');
             input.value = '';
             updateAvailableCountries();
@@ -1268,6 +1428,10 @@
             return available[Math.floor(Math.random() * available.length)];
         }
         function computerTurn() {
+            if (gameState.difficulty !== 'easy' && isComputerTrapped()) {
+                computerSurrender();
+                return;
+            }
             const available = getAvailableCountries(gameState.usedCountries, gameState.lastCountry);
             if (available.length === 0) {
                 if (!gameState.gameEnded) {
@@ -1277,7 +1441,8 @@
                 }
                 return;
             }
-            if (gameState.firstPlayer === 'user' && 
+            if (gameState.difficulty !== 'easy' && 
+                gameState.firstPlayer === 'user' && 
                 !gameState.firstTurnDone && 
                 gameState.firstTurnCountry && 
                 gameState.currentPlayer === 'computer') {
@@ -1292,6 +1457,7 @@
                     gameState.firstTurnDone = true;
                     gameState.firstTurnCountry = null;
                     addToHistory(stolenCountry + ' (뺏기)', 'computer');
+                    saveGameState();
                     showMessage(`컴퓨터가 "${stolenCountry}"를 뺏었습니다! 이제 컴퓨터가 선공입니다.`, 'error');
                     updateAvailableCountries();
                     updateGameInfo();
@@ -1299,29 +1465,172 @@
                 }
             }
             let computerChoice;
-            if (gameState.lastCountry === null) {
-                const safeCountries = available.filter(country => {
-                    if (country === '과테말라') {
-                        return true;
+            if (gameState.difficulty === 'easy') {
+                computerChoice = available[Math.floor(Math.random() * available.length)];
+            } else if (gameState.lastCountry === null) {
+                if (gameState.difficulty === 'hell') {
+                    const safeCountries = available.filter(country => {
+                        if (country === '과테말라') {
+                            return true;
+                        }
+                        const nextAvailable = COUNTRY_NAMES.filter(c => {
+                            const firstInitial = getFirstCharInitial(c);
+                            const lastInitial = getLastCharInitial(country);
+                            return firstInitial === lastInitial && !gameState.usedCountries.includes(c);
+                        });
+                        const hasStealable = nextAvailable.some(c => {
+                            const lastInitial = getLastCharInitial(c);
+                            return lastInitial === 'ㄷ' || lastInitial === 'ㄹ';
+                        });
+                        return !hasStealable;
+                    });
+                    if (safeCountries.length > 0) {
+                        computerChoice = safeCountries[Math.floor(Math.random() * safeCountries.length)];
+                    } else {
+                        if (gameState.difficulty === 'hell') {
+                            computerSurrender();
+                            return;
+                        }
+                        computerChoice = available[Math.floor(Math.random() * available.length)];
                     }
-                    const nextAvailable = COUNTRY_NAMES.filter(c => {
-                        const firstInitial = getFirstCharInitial(c);
-                        const lastInitial = getLastCharInitial(country);
-                        return firstInitial === lastInitial && !gameState.usedCountries.includes(c);
-                    });
-                    const hasStealable = nextAvailable.some(c => {
-                        const lastInitial = getLastCharInitial(c);
-                        return lastInitial === 'ㄷ' || lastInitial === 'ㄹ';
-                    });
-                    return !hasStealable;
-                });
-                if (safeCountries.length > 0) {
-                    computerChoice = safeCountries[Math.floor(Math.random() * safeCountries.length)];
                 } else {
-                    computerChoice = available[Math.floor(Math.random() * available.length)];
+                    const safeCountries = available.filter(country => {
+                        if (country === '과테말라') {
+                            return true;
+                        }
+                        const nextAvailable = COUNTRY_NAMES.filter(c => {
+                            const firstInitial = getFirstCharInitial(c);
+                            const lastInitial = getLastCharInitial(country);
+                            return firstInitial === lastInitial && !gameState.usedCountries.includes(c);
+                        });
+                        const hasStealable = nextAvailable.some(c => {
+                            const lastInitial = getLastCharInitial(c);
+                            return lastInitial === 'ㄷ' || lastInitial === 'ㄹ';
+                        });
+                        return !hasStealable;
+                    });
+                    if (safeCountries.length > 0) {
+                        computerChoice = safeCountries[Math.floor(Math.random() * safeCountries.length)];
+                    } else {
+                        computerChoice = available[Math.floor(Math.random() * available.length)];
+                    }
                 }
             } else {
-                computerChoice = available[Math.floor(Math.random() * available.length)];
+                if (gameState.difficulty === 'normal' || gameState.difficulty === 'hard' || gameState.difficulty === 'hell') {
+                    const grenadaUsed = gameState.usedCountries.includes('그레나다');
+                    const dToGCount = gameState.usedCountries.filter(c => {
+                        const first = getFirstCharInitial(c);
+                        const last = getLastCharInitial(c);
+                        return first === 'ㄷ' && last === 'ㄱ';
+                    }).length;
+                    const isDWinSituation = dToGCount === 1 && !grenadaUsed;
+                    if (isDWinSituation && (gameState.difficulty === 'hard' || gameState.difficulty === 'hell')) {
+                        const dEnding = available.filter(c => getLastCharInitial(c) === 'ㄷ');
+                        if (dEnding.length > 0) {
+                            computerChoice = dEnding[Math.floor(Math.random() * dEnding.length)];
+                        } else {
+                            const safeEndings = ['ㄱ', 'ㄹ', 'ㅂ', 'ㅈ', 'ㅋ', 'ㅌ'];
+                            const safeEndingCountries = available.filter(c => {
+                                const lastInitial = getLastCharInitial(c);
+                                return safeEndings.includes(lastInitial);
+                            });
+                            let found = false;
+                            for (const country of safeEndingCountries) {
+                                const nextAvailable = getAvailableCountries([...gameState.usedCountries, country], country);
+                                const playerCanEndWithSafe = nextAvailable.some(c => {
+                                    const lastInitial = getLastCharInitial(c);
+                                    return safeEndings.includes(lastInitial);
+                                });
+                                if (!playerCanEndWithSafe) {
+                                    computerChoice = country;
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (!found) {
+                                const oddCountCountries = safeEndingCountries.filter(country => {
+                                    const nextAvailable = getAvailableCountries([...gameState.usedCountries, country], country);
+                                    const playerSafeEndingCount = nextAvailable.filter(c => {
+                                        const lastInitial = getLastCharInitial(c);
+                                        return safeEndings.includes(lastInitial);
+                                    }).length;
+                                    return playerSafeEndingCount % 2 === 1;
+                                });
+                                if (oddCountCountries.length > 0) {
+                                    const filtered = oddCountCountries.filter(country => {
+                                        const nextAvailable = getAvailableCountries([...gameState.usedCountries, country], country);
+                                        const playerSafeEndingCount = nextAvailable.filter(c => {
+                                            const lastInitial = getLastCharInitial(c);
+                                            return safeEndings.includes(lastInitial);
+                                        }).length;
+                                        if (playerSafeEndingCount % 2 === 1) {
+                                            const computerNextAvailable = nextAvailable.filter(c => {
+                                                const lastInitial = getLastCharInitial(c);
+                                                return safeEndings.includes(lastInitial);
+                                            });
+                                            const computerCanWin = computerNextAvailable.some(c => {
+                                                const cNextAvailable = getAvailableCountries([...gameState.usedCountries, country, c], c);
+                                                const cPlayerSafeEndingCount = cNextAvailable.filter(c2 => {
+                                                    const lastInitial = getLastCharInitial(c2);
+                                                    return safeEndings.includes(lastInitial);
+                                                }).length;
+                                                return cPlayerSafeEndingCount % 2 === 0;
+                                            });
+                                            return computerCanWin;
+                                        }
+                                        return false;
+                                    });
+                                    if (filtered.length > 0) {
+                                        computerChoice = filtered[Math.floor(Math.random() * filtered.length)];
+                                    } else {
+                                        computerChoice = oddCountCountries[Math.floor(Math.random() * oddCountCountries.length)];
+                                    }
+                                } else {
+                                    computerChoice = available[Math.floor(Math.random() * available.length)];
+                                }
+                            }
+                        }
+                    }
+                }
+                if (!computerChoice) {
+                    if (gameState.difficulty === 'hell') {
+                        const safeChoices = available.filter(country => {
+                            const nextAvailable = getAvailableCountries([...gameState.usedCountries, country], country);
+                            if (nextAvailable.length > 0) {
+                                const allEndWithDOrR = nextAvailable.every(c => {
+                                    const lastInitial = getLastCharInitial(c);
+                                    return lastInitial === 'ㄷ' || lastInitial === 'ㄹ';
+                                });
+                                return !allEndWithDOrR;
+                            }
+                            return true;
+                        });
+                        if (safeChoices.length > 0) {
+                            computerChoice = safeChoices[Math.floor(Math.random() * safeChoices.length)];
+                        } else {
+                            computerChoice = available[Math.floor(Math.random() * available.length)];
+                        }
+                    } else if (gameState.difficulty === 'hard' || gameState.difficulty === 'normal') {
+                        const safeChoices = available.filter(country => {
+                            const nextAvailable = getAvailableCountries([...gameState.usedCountries, country], country);
+                            if (nextAvailable.length > 0) {
+                                const allEndWithDOrR = nextAvailable.every(c => {
+                                    const lastInitial = getLastCharInitial(c);
+                                    return lastInitial === 'ㄷ' || lastInitial === 'ㄹ';
+                                });
+                                return !allEndWithDOrR;
+                            }
+                            return true;
+                        });
+                        if (safeChoices.length > 0) {
+                            computerChoice = safeChoices[Math.floor(Math.random() * safeChoices.length)];
+                        } else {
+                            computerChoice = available[Math.floor(Math.random() * available.length)];
+                        }
+                    } else {
+                        computerChoice = available[Math.floor(Math.random() * available.length)];
+                    }
+                }
             }
             gameState.usedCountries.push(computerChoice);
             gameState.lastCountry = computerChoice;
@@ -1331,8 +1640,10 @@
                     gameState.firstTurnCountry = computerChoice;
                 }
                 gameState.firstTurnDone = true;
+                disableGameSettings();
             }
             addToHistory(computerChoice, 'computer');
+            saveGameState();
             updateAvailableCountries();
             const nextAvailable = getAvailableCountries(gameState.usedCountries, computerChoice);
             if (nextAvailable.length === 0) {
@@ -1342,6 +1653,16 @@
                     recordLoss();
                 }
             } else {
+                if (gameState.difficulty !== 'easy') {
+                    const allEndWithDOrR = nextAvailable.every(country => {
+                        const lastInitial = getLastCharInitial(country);
+                        return lastInitial === 'ㄷ' || lastInitial === 'ㄹ';
+                    });
+                    if (allEndWithDOrR && nextAvailable.length > 0 && gameState.difficulty === 'hell') {
+                        computerSurrender();
+                        return;
+                    }
+                }
                 const nextInitial = getLastCharInitial(computerChoice);
                 showMessage(`컴퓨터: "${computerChoice}" (다음: ${nextInitial}로 시작하는 나라)`, 'info');
             }
@@ -1406,15 +1727,28 @@
                 return;
             }
             const loopCountries = [];
-            const nonLoopCountries = [];
+            const seenPairs = new Set();
+            const topNonLoopCountries = [];
+            const bottomNonLoopCountries = [];
+            
             available.forEach(country => {
                 if (isLoopCountry(country, available)) {
                     loopCountries.push(country);
                 } else {
-                    nonLoopCountries.push(country);
+                    const firstInitial = getFirstCharInitial(country);
+                    const lastInitial = getLastCharInitial(country);
+                    const pairKey = `${firstInitial}-${lastInitial}`;
+                    
+                    if (seenPairs.has(pairKey)) {
+                        bottomNonLoopCountries.push(country);
+                    } else {
+                        seenPairs.add(pairKey);
+                        topNonLoopCountries.push(country);
+                    }
                 }
             });
-            const sortedCountries = [...nonLoopCountries, ...loopCountries];
+            
+            const sortedCountries = [...topNonLoopCountries, ...bottomNonLoopCountries, ...loopCountries];
             const countryHTML = sortedCountries.map(country => {
                 const isLoop = loopCountries.includes(country);
                 const tagClass = isLoop ? 'available-country-tag' : 'available-country-tag non-loop';
@@ -1425,8 +1759,14 @@
             updateGameInfo();
         }
         function selectCountry(country) {
+            if (gameState.gameEnded) {
+                return;
+            }
+            if (gameState.currentPlayer !== 'user') {
+                return;
+            }
             document.getElementById('countryInput').value = country;
-            document.getElementById('countryInput').focus();
+            submitCountry();
         }
         function toggleAvailableCountries() {
             const section = document.getElementById('availableCountriesSection');
@@ -1440,6 +1780,34 @@
                 btn.textContent = '보기';
             }
         }
+        function disableGameSettings() {
+            document.getElementById('difficultyBtnEasy').disabled = true;
+            document.getElementById('difficultyBtnNormal').disabled = true;
+            document.getElementById('difficultyBtnHard').disabled = true;
+            document.getElementById('difficultyBtnHell').disabled = true;
+            document.getElementById('turnBtnUser').disabled = true;
+            document.getElementById('turnBtnComputer').disabled = true;
+            document.getElementById('difficultyBtnEasy').style.opacity = '0.5';
+            document.getElementById('difficultyBtnNormal').style.opacity = '0.5';
+            document.getElementById('difficultyBtnHard').style.opacity = '0.5';
+            document.getElementById('difficultyBtnHell').style.opacity = '0.5';
+            document.getElementById('turnBtnUser').style.opacity = '0.5';
+            document.getElementById('turnBtnComputer').style.opacity = '0.5';
+        }
+        function enableGameSettings() {
+            document.getElementById('difficultyBtnEasy').disabled = false;
+            document.getElementById('difficultyBtnNormal').disabled = false;
+            document.getElementById('difficultyBtnHard').disabled = false;
+            document.getElementById('difficultyBtnHell').disabled = false;
+            document.getElementById('turnBtnUser').disabled = false;
+            document.getElementById('turnBtnComputer').disabled = false;
+            document.getElementById('difficultyBtnEasy').style.opacity = '1';
+            document.getElementById('difficultyBtnNormal').style.opacity = '1';
+            document.getElementById('difficultyBtnHard').style.opacity = '1';
+            document.getElementById('difficultyBtnHell').style.opacity = '1';
+            document.getElementById('turnBtnUser').style.opacity = '1';
+            document.getElementById('turnBtnComputer').style.opacity = '1';
+        }
         function startNewGame() {
             gameState.usedCountries = [];
             gameState.lastCountry = null;
@@ -1450,6 +1818,8 @@
             gameHistory.length = 0; 
             document.getElementById('history').innerHTML = '';
             document.getElementById('countryInput').value = '';
+            clearGameState();
+            enableGameSettings();
             showMessage('새 게임을 시작합니다! 나라 이름을 입력해주세요.', 'info');
             updateAvailableCountries();
             updateUndoButton();
