@@ -888,7 +888,10 @@
                 }, 500);
             }
             if (!gameState.firstTurnDone) {
-                document.getElementById('stealSection').style.display = 'none';
+                const stealSection = document.getElementById('stealSection');
+                if (stealSection) {
+                    stealSection.style.display = 'none';
+                }
             }
         }
         function toggleLeftPanel() {
@@ -1298,8 +1301,19 @@
             let computerChoice;
             if (gameState.lastCountry === null) {
                 const safeCountries = available.filter(country => {
-                    const lastInitial = getLastCharInitial(country);
-                    return country === '과테말라' || (lastInitial !== 'ㄷ' && lastInitial !== 'ㄹ');
+                    if (country === '과테말라') {
+                        return true;
+                    }
+                    const nextAvailable = COUNTRY_NAMES.filter(c => {
+                        const firstInitial = getFirstCharInitial(c);
+                        const lastInitial = getLastCharInitial(country);
+                        return firstInitial === lastInitial && !gameState.usedCountries.includes(c);
+                    });
+                    const hasStealable = nextAvailable.some(c => {
+                        const lastInitial = getLastCharInitial(c);
+                        return lastInitial === 'ㄷ' || lastInitial === 'ㄹ';
+                    });
+                    return !hasStealable;
                 });
                 if (safeCountries.length > 0) {
                     computerChoice = safeCountries[Math.floor(Math.random() * safeCountries.length)];
