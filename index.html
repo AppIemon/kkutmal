@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>나라 끝말잇기</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -488,10 +489,23 @@
             gap: 10px;
             justify-content: center;
             margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        .controls button {
+            font-size: 14px;
+            padding: 10px 16px;
         }
         .controls button:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+        }
+        @media (max-width: 900px) {
+            .controls {
+                flex-direction: column;
+            }
+            .controls button {
+                width: 100%;
+            }
         }
         .available-countries-section {
             padding: 0;
@@ -605,6 +619,9 @@
                         <button onclick="undoMove()" id="undoBtn">무르기</button>
                         <button onclick="surrender()" id="surrenderBtn" style="background-color: #dc3545;">기권</button>
                         <button onclick="exportGameHistory()" id="exportBtn">기록 저장</button>
+                        <button onclick="trainAIModel()" id="trainBtn" style="background-color: #17a2b8;">AI 모델 학습</button>
+                        <button onclick="toggleAutoLearning()" id="autoLearningBtn" style="background-color: #9c27b0; color: white;">🤖 자동 학습 모드: OFF</button>
+                        <button onclick="clearTrainingData()" id="clearDataBtn" style="background-color: #6c757d;">데이터 초기화</button>
                     </div>
                     <div class="history" id="history"></div>
                 </div>
@@ -617,6 +634,23 @@
                             총 <strong id="availableCount">0</strong>개 가능
                         </div>
                         <div class="available-countries-list" id="availableCountriesList"></div>
+                    </div>
+                    <div class="game-info-section">
+                        <h3>🤖 AI 학습 정보</h3>
+                        <div class="info-item">
+                            <strong>수집된 데이터:</strong> <span id="trainingDataCount">0</span>개
+                        </div>
+                        <div class="info-item">
+                            <strong>모델 상태:</strong> <span id="modelStatus">없음</span>
+                        </div>
+                        <div class="info-item" id="autoLearningStatus" style="display: none;">
+                            <strong>자동 학습:</strong> <span id="autoGameCountDisplay">0</span>게임 진행 중<br>
+                            <span style="font-size: 12px; color: #666;">별도 공간에서 실행 중</span>
+                        </div>
+                        <div class="info-item" style="font-size: 12px; color: #666; margin-top: 10px;">
+                            <strong>자동 학습 모드:</strong><br>
+                            "자동 학습 모드" 버튼을 클릭하면 양쪽 AI가 자동으로 게임을 진행하며 빠르게 학습합니다.
+                        </div>
                     </div>
                     <div class="game-info-section">
                         <h3>💡 게임 팁</h3>
@@ -720,6 +754,828 @@
         </div>
     </div>
     <script>
+        // TensorFlow.js AI 모델 관련 변수
+        let aiModel = null;
+        let isTraining = false;
+        let trainingData = [];
+        let dataCollectionEnabled = true; // 항상 활성화
+        let aiModeEnabled = true; // 항상 활성화
+        let lastAutoTrainCount = 0; // 마지막 자동 학습 시점의 데이터 개수
+        let autoLearningMode = false; // 자동 학습 모드
+        let autoLearningInterval = null; // 자동 학습 인터벌
+        let autoGameCount = 0; // 자동 게임 횟수
+        
+        // 자동 학습용 별도 게임 상태 (플레이어 게임과 분리)
+        const autoGameState = {
+            usedCountries: [],
+            lastCountry: null,
+            gameEnded: false,
+            firstTurnDone: false,
+            firstTurnCountry: null,
+            currentPlayer: 'user',
+            firstPlayer: 'user'
+        };
+        const autoGameHistory = []; // 자동 학습용 별도 히스토리
+        
+        const INITIALS = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+        
+        // 자동 학습 모드 토글
+        function toggleAutoLearning() {
+            autoLearningMode = !autoLearningMode;
+            const btn = document.getElementById('autoLearningBtn');
+            
+            if (autoLearningMode) {
+                btn.textContent = '🤖 자동 학습 모드: ON';
+                btn.style.backgroundColor = '#7b1fa2';
+                showMessage('자동 학습 모드가 시작되었습니다. 양쪽 AI가 자동으로 게임을 진행합니다.', 'success');
+                startAutoLearning();
+            } else {
+                btn.textContent = '🤖 자동 학습 모드: OFF';
+                btn.style.backgroundColor = '#9c27b0';
+                stopAutoLearning();
+                showMessage('자동 학습 모드가 중지되었습니다.', 'info');
+            }
+        }
+        
+        // 자동 학습 시작
+        function startAutoLearning() {
+            if (autoLearningInterval) {
+                return; // 이미 실행 중
+            }
+            
+            // 첫 게임 시작
+            startAutoGame();
+        }
+        
+        // 자동 학습 중지
+        function stopAutoLearning() {
+            if (autoLearningInterval) {
+                clearTimeout(autoLearningInterval);
+                autoLearningInterval = null;
+            }
+            autoGameCount = 0;
+        }
+        
+        // 자동 게임 시작 (양쪽 AI가 플레이) - 별도 게임 상태 사용
+        function startAutoGame() {
+            if (!autoLearningMode) {
+                return;
+            }
+            
+            // 자동 학습용 별도 게임 상태 초기화 (플레이어 게임과 분리)
+            autoGameState.usedCountries = [];
+            autoGameState.lastCountry = null;
+            autoGameState.gameEnded = false;
+            autoGameState.firstTurnDone = false;
+            autoGameState.firstTurnCountry = null;
+            autoGameState.currentPlayer = Math.random() > 0.5 ? 'user' : 'computer';
+            autoGameState.firstPlayer = autoGameState.currentPlayer;
+            autoGameHistory.length = 0;
+            
+            // 첫 수 진행
+            autoPlayTurn();
+        }
+        
+        // 자동으로 한 턴 진행 (별도 게임 상태 사용)
+        function autoPlayTurn() {
+            if (!autoLearningMode || autoGameState.gameEnded) {
+                // 게임 종료 시 다음 게임 시작
+                if (autoLearningMode) {
+                    autoGameCount++;
+                    updateModelStatus(); // 상태 업데이트
+                    
+                    // 빠른 학습을 위해 주기적으로 학습 (비동기로 실행하여 게임 진행 방해 안 함)
+                    if (!isTraining && trainingData.length >= 20 && trainingData.length - lastAutoTrainCount >= 20) {
+                        // 비동기로 학습 시작 (게임 진행은 계속됨)
+                        trainModelFast(10).then(() => {
+                            updateModelStatus();
+                        }).catch(err => {
+                            console.error('자동 학습 오류:', err);
+                        });
+                    }
+                    
+                    // 다음 게임 시작 (즉시)
+                    setTimeout(() => {
+                        startAutoGame();
+                    }, 10);
+                }
+                return;
+            }
+            
+            // 자동 학습용 별도 게임 상태 사용
+            const available = getAvailableCountries(autoGameState.usedCountries, autoGameState.lastCountry);
+            
+            if (available.length === 0) {
+                // 게임 종료
+                autoGameState.gameEnded = true;
+                autoPlayTurn(); // 다음 게임 시작
+                return;
+            }
+            
+            // AI가 나라 선택 (랜덤 또는 학습된 모델 사용)
+            let choice;
+            if (aiModel && Math.random() > 0.3) {
+                // 70% 확률로 학습된 모델 사용
+                choice = aiChooseCountry(available, autoGameState.usedCountries, autoGameState.lastCountry);
+            }
+            
+            if (!choice) {
+                // 모델이 없거나 선택 실패 시 랜덤 선택
+                choice = available[Math.floor(Math.random() * available.length)];
+            }
+            
+            // 데이터 수집 (자동 학습 데이터)
+            if (dataCollectionEnabled) {
+                const prevUsed = autoGameState.usedCountries.slice();
+                const prevLast = autoGameState.lastCountry;
+                collectGameData(choice, prevUsed, prevLast, available);
+            }
+            
+            // 자동 학습용 게임 상태 업데이트 (플레이어 게임 상태와 분리)
+            autoGameState.usedCountries.push(choice);
+            autoGameState.lastCountry = choice;
+            autoGameState.currentPlayer = autoGameState.currentPlayer === 'user' ? 'computer' : 'user';
+            
+            if (!autoGameState.firstTurnDone) {
+                autoGameState.firstTurnDone = true;
+                if (autoGameState.firstPlayer === autoGameState.currentPlayer) {
+                    autoGameState.firstTurnCountry = choice;
+                }
+            }
+            
+            // 자동 학습용 히스토리 추가 (플레이어 히스토리와 분리)
+            autoGameHistory.push({
+                country: choice,
+                player: autoGameState.currentPlayer === 'user' ? 'computer' : 'user',
+                usedCountries: [...autoGameState.usedCountries],
+                lastCountry: autoGameState.lastCountry,
+                currentPlayer: autoGameState.currentPlayer,
+                firstTurnDone: autoGameState.firstTurnDone,
+                firstTurnCountry: autoGameState.firstTurnCountry,
+                gameEnded: autoGameState.gameEnded
+            });
+            
+            // 다음 턴 진행 (즉시, 딜레이 없음)
+            setTimeout(() => {
+                autoPlayTurn();
+            }, 0);
+        }
+        
+        // 빠른 학습 (적은 에포크로 빠르게 학습)
+        async function trainModelFast(epochs = 10) {
+            if (trainingData.length < 10) {
+                return false;
+            }
+            
+            if (isTraining) {
+                return false;
+            }
+            
+            isTraining = true;
+            
+            try {
+                if (!aiModel) {
+                    aiModel = createModel();
+                } else {
+                    // 모델이 로드된 경우 컴파일 상태 확인 및 재컴파일
+                    if (!aiModel.optimizer) {
+                        aiModel.compile({
+                            optimizer: tf.train.adam(0.001),
+                            loss: 'categoricalCrossentropy',
+                            metrics: ['accuracy']
+                        });
+                    }
+                }
+                
+                const { xs, ys } = prepareTrainingData();
+                
+                // 빠른 학습을 위해 작은 배치 사이즈 사용
+                const batchSize = Math.min(16, Math.max(4, Math.floor(trainingData.length / 4)));
+                
+                // 비동기로 학습 실행 (게임 진행 방해 최소화)
+                await aiModel.fit(xs, ys, {
+                    epochs: epochs,
+                    batchSize: batchSize,
+                    validationSplit: 0.1,
+                    verbose: 0, // 로그 최소화
+                    callbacks: {
+                        onEpochEnd: (epoch, logs) => {
+                            // 로그 최소화
+                        }
+                    }
+                });
+                
+                xs.dispose();
+                ys.dispose();
+                
+                // 모델 저장 (비동기로 실행하여 게임 진행 방해 안 함)
+                saveModel().catch(err => console.error('모델 저장 오류:', err));
+                
+                lastAutoTrainCount = trainingData.length;
+                isTraining = false;
+                
+                return true;
+            } catch (error) {
+                console.error('빠른 학습 오류:', error);
+                isTraining = false;
+                return false;
+            }
+        }
+        
+        // AI 패배 시 전략 분석
+        function analyzeDefeatStrategy() {
+            const analysis = {
+                strategies: [],
+                criticalMoves: [],
+                patternAnalysis: {}
+            };
+            
+            // 1. 초성 전략 분석
+            const dToGCount = gameState.usedCountries.filter(c => {
+                const first = getFirstCharInitial(c);
+                const last = getLastCharInitial(c);
+                return first === 'ㄷ' && last === 'ㄱ';
+            }).length;
+            const gToDCount = gameState.usedCountries.filter(c => {
+                const first = getFirstCharInitial(c);
+                const last = getLastCharInitial(c);
+                return first === 'ㄱ' && last === 'ㄷ';
+            }).length;
+            const dWinSituation = (dToGCount - gToDCount) > 0;
+            
+            const rToYCount = gameState.usedCountries.filter(c => {
+                const first = getFirstCharInitial(c);
+                const last = getLastCharInitial(c);
+                return first === 'ㄹ' && last === 'ㅇ';
+            }).length;
+            const yToRCount = gameState.usedCountries.filter(c => {
+                const first = getFirstCharInitial(c);
+                const last = getLastCharInitial(c);
+                return first === 'ㅇ' && last === 'ㄹ';
+            }).length;
+            const rWinSituation = (rToYCount - yToRCount) > 0;
+            
+            if (dWinSituation && !gameState.usedCountries.includes('그레나다')) {
+                analysis.strategies.push({
+                    type: 'ㄷ-ㄱ 전략',
+                    description: '플레이어가 ㄷ→ㄱ 전략을 사용하여 승리했습니다.',
+                    details: `ㄷ→ㄱ 사용: ${dToGCount}개, ㄱ→ㄷ 사용: ${gToDCount}개, 차이: ${dToGCount - gToDCount}개`,
+                    impact: 'high'
+                });
+            }
+            
+            if (rWinSituation) {
+                analysis.strategies.push({
+                    type: 'ㄹ-ㅇ 전략',
+                    description: '플레이어가 ㄹ→ㅇ 전략을 사용하여 승리했습니다.',
+                    details: `ㄹ→ㅇ 사용: ${rToYCount}개, ㅇ→ㄹ 사용: ${yToRCount}개, 차이: ${rToYCount - yToRCount}개`,
+                    impact: 'high'
+                });
+            }
+            
+            // 2. 마지막 턴 분석
+            if (gameState.lastCountry) {
+                const lastInitial = getLastCharInitial(gameState.lastCountry);
+                const available = getAvailableCountries(gameState.usedCountries, gameState.lastCountry);
+                
+                if (available.length === 0) {
+                    analysis.criticalMoves.push({
+                        move: gameState.lastCountry,
+                        reason: `"${gameState.lastCountry}"를 선택하여 AI가 ${lastInitial}로 시작하는 나라를 찾지 못하게 했습니다.`,
+                        impact: 'critical'
+                    });
+                }
+                
+                // 특정 초성으로 끝나는 나라가 부족한지 확인
+                const endingCounts = {};
+                INITIALS.forEach(initial => {
+                    const count = COUNTRY_NAMES.filter(c => 
+                        getLastCharInitial(c) === initial && 
+                        !gameState.usedCountries.includes(c)
+                    ).length;
+                    endingCounts[initial] = count;
+                });
+                
+                const lowEndingCounts = Object.entries(endingCounts)
+                    .filter(([initial, count]) => count <= 2 && count > 0)
+                    .sort((a, b) => a[1] - b[1]);
+                
+                if (lowEndingCounts.length > 0) {
+                    analysis.patternAnalysis.lowEndingCounts = lowEndingCounts.map(([initial, count]) => ({
+                        initial,
+                        count,
+                        description: `${initial}로 끝나는 나라가 ${count}개만 남았습니다.`
+                    }));
+                }
+            }
+            
+            // 3. 게임 히스토리 분석 - 중요한 전환점 찾기
+            const userMoves = gameHistory.filter(h => h.player === 'user');
+            const computerMoves = gameHistory.filter(h => h.player === 'computer');
+            
+            // 사용자가 선택한 나라들의 패턴 분석
+            const userEndings = userMoves.map(move => getLastCharInitial(move.country));
+            const endingFrequency = {};
+            userEndings.forEach(ending => {
+                endingFrequency[ending] = (endingFrequency[ending] || 0) + 1;
+            });
+            
+            const mostFrequentEndings = Object.entries(endingFrequency)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 3);
+            
+            if (mostFrequentEndings.length > 0) {
+                analysis.patternAnalysis.frequentEndings = mostFrequentEndings.map(([initial, count]) => ({
+                    initial,
+                    count,
+                    description: `플레이어가 ${initial}로 끝나는 나라를 ${count}번 선택했습니다.`
+                }));
+            }
+            
+            // 4. 뺏기 전략 사용 여부
+            const stealMoves = gameHistory.filter(h => h.country.includes('뺏기'));
+            if (stealMoves.length > 0) {
+                analysis.strategies.push({
+                    type: '뺏기 전략',
+                    description: '플레이어가 뺏기 전략을 사용했습니다.',
+                    details: `뺏기 사용 횟수: ${stealMoves.length}회`,
+                    impact: 'medium'
+                });
+            }
+            
+            // 5. 특정 나라 사용 패턴
+            const grenadaUsed = gameState.usedCountries.includes('그레나다');
+            const guatemalaUsed = gameState.usedCountries.includes('과테말라');
+            
+            if (grenadaUsed) {
+                analysis.criticalMoves.push({
+                    move: '그레나다',
+                    reason: '그레나다를 사용하여 ㄷ→ㄱ 루프를 깨뜨렸습니다.',
+                    impact: 'high'
+                });
+            }
+            
+            if (guatemalaUsed) {
+                analysis.criticalMoves.push({
+                    move: '과테말라',
+                    reason: '과테말라를 사용하여 안전한 시작을 만들었습니다.',
+                    impact: 'medium'
+                });
+            }
+            
+            return analysis;
+        }
+        
+        // 전략 분석 결과 표시
+        function displayStrategyAnalysis(analysis) {
+            let analysisText = '📊 AI 패배 전략 분석\n';
+            analysisText += '='.repeat(40) + '\n\n';
+            
+            if (analysis.strategies.length > 0) {
+                analysisText += '🎯 사용된 전략:\n';
+                analysis.strategies.forEach((strategy, idx) => {
+                    analysisText += `${idx + 1}. [${strategy.type}] ${strategy.description}\n`;
+                    analysisText += `   ${strategy.details}\n\n`;
+                });
+            }
+            
+            if (analysis.criticalMoves.length > 0) {
+                analysisText += '⚡ 중요한 수:\n';
+                analysis.criticalMoves.forEach((move, idx) => {
+                    analysisText += `${idx + 1}. "${move.move}": ${move.reason}\n\n`;
+                });
+            }
+            
+            if (analysis.patternAnalysis.frequentEndings) {
+                analysisText += '📈 패턴 분석:\n';
+                analysis.patternAnalysis.frequentEndings.forEach(pattern => {
+                    analysisText += `- ${pattern.description}\n`;
+                });
+                analysisText += '\n';
+            }
+            
+            if (analysis.patternAnalysis.lowEndingCounts) {
+                analysisText += '⚠️ 위험한 초성:\n';
+                analysis.patternAnalysis.lowEndingCounts.forEach(pattern => {
+                    analysisText += `- ${pattern.description}\n`;
+                });
+                analysisText += '\n';
+            }
+            
+            analysisText += '='.repeat(40);
+            
+            // 모달로 표시
+            showStrategyAnalysisModal(analysisText, analysis);
+        }
+        
+        // 전략 분석 모달 표시
+        function showStrategyAnalysisModal(text, analysis) {
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.7);
+                z-index: 10000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                animation: fadeIn 0.3s ease;
+            `;
+            
+            const content = document.createElement('div');
+            content.style.cssText = `
+                background: white;
+                border-radius: 12px;
+                padding: 30px;
+                max-width: 600px;
+                max-height: 80vh;
+                overflow-y: auto;
+                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            `;
+            
+            const title = document.createElement('h2');
+            title.textContent = '🤖 AI 패배 전략 분석';
+            title.style.cssText = 'margin: 0 0 20px 0; color: #333;';
+            
+            const textArea = document.createElement('pre');
+            textArea.textContent = text;
+            textArea.style.cssText = `
+                white-space: pre-wrap;
+                font-family: 'Malgun Gothic', sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+                color: #333;
+                background: #f5f5f5;
+                padding: 15px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+            `;
+            
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = '닫기';
+            closeBtn.style.cssText = `
+                padding: 10px 20px;
+                background: #667eea;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 16px;
+            `;
+            closeBtn.onclick = () => {
+                document.body.removeChild(modal);
+            };
+            
+            content.appendChild(title);
+            content.appendChild(textArea);
+            content.appendChild(closeBtn);
+            modal.appendChild(content);
+            modal.onclick = (e) => {
+                if (e.target === modal) {
+                    document.body.removeChild(modal);
+                }
+            };
+            
+            document.body.appendChild(modal);
+        }
+        
+        // AI 모델 학습 시작
+        async function trainAIModel() {
+            if (isTraining) {
+                showMessage('이미 학습이 진행 중입니다.', 'error');
+                return;
+            }
+            
+            if (trainingData.length < 10) {
+                showMessage(`학습 데이터가 부족합니다. 현재 ${trainingData.length}개, 최소 10개 필요합니다.`, 'error');
+                return;
+            }
+            
+            const epochs = parseInt(prompt(`학습 에포크 수를 입력하세요 (기본값: 50):`, '50')) || 50;
+            
+            // 버튼 비활성화
+            const trainBtn = document.getElementById('trainBtn');
+            const originalText = trainBtn.textContent;
+            trainBtn.disabled = true;
+            trainBtn.textContent = '학습 중...';
+            
+            const success = await trainModel(epochs);
+            
+            // 버튼 활성화
+            trainBtn.disabled = false;
+            trainBtn.textContent = originalText;
+            
+            if (success) {
+                updateModelStatus();
+            }
+        }
+        
+        // AI 모델 생성
+        function createModel() {
+            const model = tf.sequential({
+                layers: [
+                    tf.layers.dense({
+                        inputShape: [78], // 특징 벡터 크기 (1 + 19 + 19 + 19 + 19 + 1 = 78)
+                        units: 128,
+                        activation: 'relu',
+                        kernelInitializer: 'heNormal'
+                    }),
+                    tf.layers.dropout({ rate: 0.3 }),
+                    tf.layers.dense({
+                        units: 64,
+                        activation: 'relu'
+                    }),
+                    tf.layers.dropout({ rate: 0.2 }),
+                    tf.layers.dense({
+                        units: COUNTRY_NAMES.length,
+                        activation: 'softmax'
+                    })
+                ]
+            });
+            
+            model.compile({
+                optimizer: tf.train.adam(0.001),
+                loss: 'categoricalCrossentropy',
+                metrics: ['accuracy']
+            });
+            
+            return model;
+        }
+        
+        // 게임 상태를 특징 벡터로 변환
+        function gameStateToFeatures(usedCountries, lastCountry, availableCountries) {
+            const features = new Array(78).fill(0); // 실제 특징 벡터 크기: 78
+            let idx = 0;
+            
+            // 사용된 나라 수 (정규화)
+            features[idx++] = Math.min(usedCountries.length / COUNTRY_NAMES.length, 1.0);
+            
+            // 마지막 나라의 초성 (one-hot encoding)
+            if (lastCountry) {
+                const lastInitial = getLastCharInitial(lastCountry);
+                const lastInitialIdx = INITIALS.indexOf(lastInitial);
+                if (lastInitialIdx >= 0) {
+                    features[idx + lastInitialIdx] = 1.0;
+                }
+            }
+            idx += 19;
+            
+            // 다음 초성 (one-hot encoding)
+            if (lastCountry) {
+                const nextInitial = getLastCharInitial(lastCountry);
+                const nextInitialIdx = INITIALS.indexOf(nextInitial);
+                if (nextInitialIdx >= 0) {
+                    features[idx + nextInitialIdx] = 1.0;
+                }
+            }
+            idx += 19;
+            
+            // 각 초성으로 시작하는 나라의 사용 비율
+            INITIALS.forEach(initial => {
+                const total = COUNTRY_NAMES.filter(c => getFirstCharInitial(c) === initial).length;
+                const used = usedCountries.filter(c => getFirstCharInitial(c) === initial).length;
+                features[idx++] = total > 0 ? used / total : 0;
+            });
+            
+            // 각 초성으로 끝나는 나라의 사용 비율
+            INITIALS.forEach(initial => {
+                const total = COUNTRY_NAMES.filter(c => getLastCharInitial(c) === initial).length;
+                const used = usedCountries.filter(c => getLastCharInitial(c) === initial).length;
+                features[idx++] = total > 0 ? used / total : 0;
+            });
+            
+            // 사용 가능한 나라 수 (정규화)
+            features[idx++] = Math.min(availableCountries.length / COUNTRY_NAMES.length, 1.0);
+            
+            return features;
+        }
+        
+        // 나라 이름을 인덱스로 변환
+        function countryToIndex(country) {
+            return COUNTRY_NAMES.indexOf(country);
+        }
+        
+        // 인덱스를 나라 이름으로 변환
+        function indexToCountry(index) {
+            return COUNTRY_NAMES[index];
+        }
+        
+        // 게임 데이터 수집
+        function collectGameData(country, usedCountries, lastCountry, availableCountries) {
+            const features = gameStateToFeatures(usedCountries, lastCountry, availableCountries);
+            const countryIndex = countryToIndex(country);
+            
+            if (countryIndex >= 0) {
+                trainingData.push({
+                    features: features,
+                    label: countryIndex
+                });
+            }
+        }
+        
+        // 학습 데이터 준비
+        function prepareTrainingData() {
+            if (trainingData.length === 0) {
+                return { xs: null, ys: null };
+            }
+            
+            const xs = [];
+            const ys = [];
+            
+            trainingData.forEach(data => {
+                xs.push(data.features);
+                const label = new Array(COUNTRY_NAMES.length).fill(0);
+                label[data.label] = 1;
+                ys.push(label);
+            });
+            
+            return {
+                xs: tf.tensor2d(xs),
+                ys: tf.tensor2d(ys)
+            };
+        }
+        
+        // 모델 학습
+        async function trainModel(epochs = 50) {
+            if (trainingData.length < 10) {
+                showMessage('학습 데이터가 부족합니다. 최소 10개의 데이터가 필요합니다.', 'error');
+                return false;
+            }
+            
+            isTraining = true;
+            showMessage(`모델 학습 중... (${trainingData.length}개 데이터, ${epochs} 에포크)`, 'info');
+            
+            try {
+                if (!aiModel) {
+                    aiModel = createModel();
+                } else {
+                    // 모델이 로드된 경우 컴파일 상태 확인 및 재컴파일
+                    if (!aiModel.optimizer) {
+                        aiModel.compile({
+                            optimizer: tf.train.adam(0.001),
+                            loss: 'categoricalCrossentropy',
+                            metrics: ['accuracy']
+                        });
+                    }
+                }
+                
+                const { xs, ys } = prepareTrainingData();
+                
+                await aiModel.fit(xs, ys, {
+                    epochs: epochs,
+                    batchSize: Math.min(32, Math.floor(trainingData.length / 2)),
+                    validationSplit: 0.2,
+                    callbacks: {
+                        onEpochEnd: (epoch, logs) => {
+                            if ((epoch + 1) % 10 === 0) {
+                                console.log(`Epoch ${epoch + 1}: loss = ${logs.loss.toFixed(4)}, accuracy = ${logs.acc ? logs.acc.toFixed(4) : 'N/A'}`);
+                            }
+                        }
+                    }
+                });
+                
+                xs.dispose();
+                ys.dispose();
+                
+                // 모델 저장
+                await saveModel();
+                
+                isTraining = false;
+                showMessage(`모델 학습 완료! (${trainingData.length}개 데이터로 학습)`, 'success');
+                return true;
+            } catch (error) {
+                console.error('학습 오류:', error);
+                isTraining = false;
+                showMessage('모델 학습 중 오류가 발생했습니다.', 'error');
+                return false;
+            }
+        }
+        
+        // 모델 저장
+        async function saveModel() {
+            try {
+                const modelData = await aiModel.save('indexeddb://country-game-model');
+                console.log('모델 저장 완료');
+            } catch (error) {
+                console.error('모델 저장 오류:', error);
+            }
+        }
+        
+        // 모델 로드
+        async function loadModel() {
+            try {
+                aiModel = await tf.loadLayersModel('indexeddb://country-game-model');
+                
+                // 모델의 입력 크기 확인
+                const inputShape = aiModel.inputs[0].shape;
+                if (inputShape && inputShape[1] !== 78) {
+                    console.log('기존 모델의 입력 크기가 맞지 않습니다. 모델을 재생성합니다.');
+                    // 기존 모델 삭제
+                    try {
+                        await tf.io.removeModel('indexeddb://country-game-model');
+                    } catch (e) {
+                        console.log('모델 삭제 오류:', e);
+                    }
+                    aiModel = null;
+                    updateModelStatus();
+                    return false;
+                }
+                
+                // 모델이 로드되었지만 컴파일되지 않은 경우 재컴파일
+                if (!aiModel.optimizer) {
+                    console.log('모델 컴파일 중...');
+                    aiModel.compile({
+                        optimizer: tf.train.adam(0.001),
+                        loss: 'categoricalCrossentropy',
+                        metrics: ['accuracy']
+                    });
+                }
+                
+                console.log('모델 로드 완료');
+                updateModelStatus();
+                return true;
+            } catch (error) {
+                console.log('저장된 모델이 없습니다:', error);
+                updateModelStatus();
+                return false;
+            }
+        }
+        
+        // 모델 상태 업데이트
+        function updateModelStatus() {
+            const statusEl = document.getElementById('modelStatus');
+            if (statusEl) {
+                if (aiModel) {
+                    statusEl.textContent = '로드됨';
+                    statusEl.style.color = '#28a745';
+                } else {
+                    statusEl.textContent = '없음';
+                    statusEl.style.color = '#666';
+                }
+            }
+            const countEl = document.getElementById('trainingDataCount');
+            if (countEl) {
+                countEl.textContent = trainingData.length;
+            }
+            
+            // 자동 학습 상태 업데이트
+            const autoStatusEl = document.getElementById('autoLearningStatus');
+            const autoGameCountEl = document.getElementById('autoGameCountDisplay');
+            if (autoLearningMode) {
+                if (autoStatusEl) autoStatusEl.style.display = 'block';
+                if (autoGameCountEl) autoGameCountEl.textContent = autoGameCount;
+            } else {
+                if (autoStatusEl) autoStatusEl.style.display = 'none';
+            }
+        }
+        
+        // 학습 데이터 초기화
+        function clearTrainingData() {
+            if (confirm('수집된 학습 데이터를 모두 삭제하시겠습니까?')) {
+                trainingData = [];
+                updateModelStatus();
+                showMessage('학습 데이터가 삭제되었습니다.', 'info');
+            }
+        }
+        
+        // AI 모델을 사용하여 나라 선택
+        function aiChooseCountry(availableCountries, usedCountries, lastCountry) {
+            if (!aiModel || availableCountries.length === 0) {
+                return null;
+            }
+            
+            try {
+                const features = gameStateToFeatures(usedCountries, lastCountry, availableCountries);
+                const input = tf.tensor2d([features]);
+                
+                const prediction = aiModel.predict(input);
+                const probabilities = prediction.dataSync();
+                
+                input.dispose();
+                prediction.dispose();
+                
+                // 사용 가능한 나라 중에서 가장 높은 확률을 가진 나라 선택
+                let bestCountry = null;
+                let bestProb = -1;
+                
+                availableCountries.forEach(country => {
+                    const idx = countryToIndex(country);
+                    if (idx >= 0 && probabilities[idx] > bestProb) {
+                        bestProb = probabilities[idx];
+                        bestCountry = country;
+                    }
+                });
+                
+                return bestCountry || availableCountries[Math.floor(Math.random() * availableCountries.length)];
+            } catch (error) {
+                console.error('AI 예측 오류:', error);
+                return null;
+            }
+        }
+        
         const COUNTRY_NAMES = [
             "가나", "가봉", "가이아나", "감비아", "과테말라", "그레나다", "그리스", "기니", "기니비사우",
             "나미비아", "나우루", "나이지리아", "남수단", "남아프리카공화국", "네덜란드", "네팔", "노르웨이", "뉴질랜드", "니제르", "니카라과",
@@ -845,45 +1701,6 @@
         function clearGameState() {
             localStorage.removeItem('countryGameState');
         }
-        function calculateWinProbability(country, usedCountries) {
-            const nextAvailable = getAvailableCountries([...usedCountries, country], country);
-            if (nextAvailable.length === 0) {
-                return 100;
-            }
-            const grenadaUsed = usedCountries.includes('그레나다');
-            const dToGCount = usedCountries.filter(c => {
-                const first = getFirstCharInitial(c);
-                const last = getLastCharInitial(c);
-                return first === 'ㄷ' && last === 'ㄱ';
-            }).length;
-            const isDWinSituation = dToGCount === 1 && !grenadaUsed;
-            if (isDWinSituation) {
-                const lastInitial = getLastCharInitial(country);
-                if (lastInitial === 'ㄷ') {
-                    return 95;
-                }
-            }
-            const allEndWithDOrR = nextAvailable.every(c => {
-                const lastInitial = getLastCharInitial(c);
-                return lastInitial === 'ㄷ' || lastInitial === 'ㄹ';
-            });
-            if (allEndWithDOrR && nextAvailable.length > 0) {
-                return 10;
-            }
-            const safeEndings = ['ㄱ', 'ㄹ', 'ㅂ', 'ㅈ', 'ㅋ', 'ㅌ'];
-            const safeEndingCount = nextAvailable.filter(c => {
-                const lastInitial = getLastCharInitial(c);
-                return safeEndings.includes(lastInitial);
-            }).length;
-            const totalCount = nextAvailable.length;
-            if (totalCount === 0) {
-                return 100;
-            }
-            const safeRatio = safeEndingCount / totalCount;
-            const baseProbability = 50;
-            const probability = Math.round(baseProbability + (safeRatio - 0.5) * 40);
-            return Math.max(10, Math.min(90, probability));
-        }
         function updateStatsDisplay() {
             const stats = getStats();
             const winRate = stats.totalGames > 0 
@@ -929,6 +1746,36 @@
                 recordLoss();
                 updateGameInfo();
             }
+        }
+        function computerSurrender() {
+            if (gameState.gameEnded) {
+                return;
+            }
+            gameState.gameEnded = true;
+            showMessage('🎉 축하합니다! 컴퓨터가 기권했습니다. 당신이 승리했습니다!', 'success');
+            recordWin();
+            updateGameInfo();
+        }
+        function findSafeFromAttack(available, attackInitial, depth, maxDepth, usedCountries) {
+            if (depth >= maxDepth) {
+                return [];
+            }
+            const safe = available.filter(country => {
+                const nextAvailable = getAvailableCountries([...usedCountries, country], country);
+                return !nextAvailable.some(c => getLastCharInitial(c) === attackInitial);
+            });
+            if (depth === maxDepth - 1) {
+                return safe;
+            }
+            const results = [];
+            for (const country of safe) {
+                const nextAvailable = getAvailableCountries([...usedCountries, country], country);
+                const deeperSafe = findSafeFromAttack(nextAvailable, attackInitial, depth + 1, maxDepth, [...usedCountries, country]);
+                if (deeperSafe.length > 0) {
+                    results.push(country);
+                }
+            }
+            return results;
         }
         function isComputerTrapped() {
             const available = getAvailableCountries(gameState.usedCountries, gameState.lastCountry);
@@ -1089,7 +1936,17 @@
                 overlay.classList.remove('show');
             }
         }
-        window.addEventListener('DOMContentLoaded', function() {
+        window.addEventListener('DOMContentLoaded', async function() {
+            // TensorFlow.js 로드 확인
+            if (typeof tf === 'undefined') {
+                console.error('TensorFlow.js가 로드되지 않았습니다.');
+                showMessage('TensorFlow.js 로드 실패. 페이지를 새로고침해주세요.', 'error');
+            } else {
+                console.log('TensorFlow.js 로드 완료');
+                // 저장된 모델 로드 시도
+                await loadModel();
+            }
+            
             const loaded = loadGameState();
             if (loaded) {
                 const difficultyNames = {
@@ -1128,6 +1985,7 @@
             updateAvailableCountries();
             updateStatsDisplay();
             updateGameInfo();
+            updateModelStatus();
         });
         function openSearch() {
             const overlay = document.getElementById('searchOverlay');
@@ -1225,6 +2083,7 @@
             showMessage(itemsToRemove === 2 ? '한 턴을 무르기했습니다.' : '무르기를 실행했습니다.', 'info');
         }
         function submitCountry() {
+            // 자동 학습 모드는 별도 공간에서 실행되므로 플레이어 게임과 충돌하지 않음
             const input = document.getElementById('countryInput');
             const country = input.value.trim();
             if (!country) {
@@ -1269,6 +2128,27 @@
                     gameState.firstTurnDone = true;
                     disableGameSettings();
                 }
+                
+                // 데이터 수집
+                if (dataCollectionEnabled) {
+                    const available = getAvailableCountries([], null);
+                    collectGameData(country, [], null, available);
+                    updateModelStatus();
+                    
+                    // 충분한 데이터가 모이면 자동 학습
+                    if (trainingData.length >= 50 && trainingData.length % 50 === 0 && !isTraining && !aiModel) {
+                        setTimeout(async () => {
+                            showMessage(`${trainingData.length}개의 데이터가 수집되었습니다. 자동 학습을 시작합니다...`, 'info');
+                            await trainModel(30);
+                        }, 500);
+                    } else if (trainingData.length >= 100 && trainingData.length % 100 === 0 && !isTraining && aiModel) {
+                        setTimeout(async () => {
+                            showMessage(`${trainingData.length}개의 데이터로 모델을 재학습합니다...`, 'info');
+                            await trainModel(20);
+                        }, 500);
+                    }
+                }
+                
                 addToHistory(country, 'user');
                 saveGameState();
                 showMessage(`좋습니다! "${country}" 다음에 올 수 있는 나라를 찾아보세요.`, 'success');
@@ -1297,6 +2177,35 @@
             gameState.usedCountries.push(country);
             gameState.lastCountry = country;
             gameState.currentPlayer = 'computer';
+            
+            // 데이터 수집
+            if (dataCollectionEnabled) {
+                const available = getAvailableCountries(gameState.usedCountries.slice(0, -1), gameState.lastCountry);
+                collectGameData(country, gameState.usedCountries.slice(0, -1), gameState.lastCountry, available);
+                updateModelStatus();
+                
+                // 충분한 데이터가 모이면 자동 학습 (중복 방지)
+                if (!isTraining && trainingData.length >= 50 && trainingData.length - lastAutoTrainCount >= 50) {
+                    if (!aiModel) {
+                        setTimeout(async () => {
+                            showMessage(`${trainingData.length}개의 데이터가 수집되었습니다. 자동 학습을 시작합니다...`, 'info');
+                            const success = await trainModel(30);
+                            if (success) {
+                                lastAutoTrainCount = trainingData.length;
+                            }
+                        }, 500);
+                    } else if (trainingData.length >= 100 && trainingData.length - lastAutoTrainCount >= 100) {
+                        setTimeout(async () => {
+                            showMessage(`${trainingData.length}개의 데이터로 모델을 재학습합니다...`, 'info');
+                            const success = await trainModel(20);
+                            if (success) {
+                                lastAutoTrainCount = trainingData.length;
+                            }
+                        }, 500);
+                    }
+                }
+            }
+            
             addToHistory(country, 'user');
             saveGameState();
             showMessage(`정답입니다! "${country}" 다음에 올 수 있는 나라를 찾아보세요.`, 'success');
@@ -1467,6 +2376,14 @@
                     gameState.gameEnded = true;
                     showMessage('🎉 축하합니다! 컴퓨터가 더 이상 답할 수 없습니다. 당신이 승리했습니다!', 'success');
                     recordWin();
+                    
+                    // AI 패배 시 전략 분석
+                    if (aiModeEnabled) {
+                        setTimeout(() => {
+                            const analysis = analyzeDefeatStrategy();
+                            displayStrategyAnalysis(analysis);
+                        }, 1000);
+                    }
                 }
                 return;
             }
@@ -1494,7 +2411,20 @@
                 }
             }
             let computerChoice;
-            if (gameState.difficulty === 'easy') {
+            
+            // AI 모드가 활성화되어 있고 모델이 있으면 AI 사용
+            if (aiModeEnabled) {
+                if (aiModel) {
+                    computerChoice = aiChooseCountry(available, gameState.usedCountries, gameState.lastCountry);
+                    if (!computerChoice) {
+                        // AI가 선택하지 못하면 기본 로직 사용
+                        computerChoice = available[Math.floor(Math.random() * available.length)];
+                    }
+                } else {
+                    // 모델이 없으면 랜덤 선택
+                    computerChoice = available[Math.floor(Math.random() * available.length)];
+                }
+            } else if (gameState.difficulty === 'easy') {
                 computerChoice = available[Math.floor(Math.random() * available.length)];
             } else if (gameState.lastCountry === null) {
                 if (gameState.difficulty === 'hell') {
@@ -1541,14 +2471,85 @@
                     }
                 }
             } else {
-                if (gameState.difficulty === 'normal' || gameState.difficulty === 'hard' || gameState.difficulty === 'hell') {
+                if (gameState.difficulty === 'hard' || gameState.difficulty === 'hell') {
+                    const rToYCount = gameState.usedCountries.filter(c => {
+                        const first = getFirstCharInitial(c);
+                        const last = getLastCharInitial(c);
+                        return first === 'ㄹ' && last === 'ㅇ';
+                    }).length;
+                    const yToRCount = gameState.usedCountries.filter(c => {
+                        const first = getFirstCharInitial(c);
+                        const last = getLastCharInitial(c);
+                        return first === 'ㅇ' && last === 'ㄹ';
+                    }).length;
+                    const isRWinSituation = (rToYCount - yToRCount) > 0;
+                    if (isRWinSituation) {
+                        const rEnding = available.filter(c => getLastCharInitial(c) === 'ㄹ');
+                        if (rEnding.length > 0) {
+                            computerChoice = rEnding[Math.floor(Math.random() * rEnding.length)];
+                        } else {
+                            const safeFromRAttack = available.filter(country => {
+                                const nextAvailable = getAvailableCountries([...gameState.usedCountries, country], country);
+                                return !nextAvailable.some(c => getLastCharInitial(c) === 'ㄹ');
+                            });
+                            if (safeFromRAttack.length > 0) {
+                                if (gameState.difficulty === 'hell') {
+                                    const zeroSafe = safeFromRAttack.filter(country => {
+                                        const nextAvailable = getAvailableCountries([...gameState.usedCountries, country], country);
+                                        const safeFromRAttackNext = nextAvailable.filter(c => {
+                                            const nextNextAvailable = getAvailableCountries([...gameState.usedCountries, country, c], c);
+                                            return !nextNextAvailable.some(c2 => getLastCharInitial(c2) === 'ㄹ');
+                                        });
+                                        return safeFromRAttackNext.length === 0;
+                                    });
+                                    if (zeroSafe.length > 0) {
+                                        computerChoice = zeroSafe[Math.floor(Math.random() * zeroSafe.length)];
+                                    } else {
+                                        const depth5Safe = findSafeFromAttack(safeFromRAttack, 'ㄹ', 0, 5, gameState.usedCountries);
+                                        if (depth5Safe.length > 0) {
+                                            computerChoice = depth5Safe[Math.floor(Math.random() * depth5Safe.length)];
+                                        } else {
+                                            const minSafe = safeFromRAttack.map(country => {
+                                                const nextAvailable = getAvailableCountries([...gameState.usedCountries, country], country);
+                                                const safeFromRAttackNext = nextAvailable.filter(c => {
+                                                    const nextNextAvailable = getAvailableCountries([...gameState.usedCountries, country, c], c);
+                                                    return !nextNextAvailable.some(c2 => getLastCharInitial(c2) === 'ㄹ');
+                                                });
+                                                return { country, count: safeFromRAttackNext.length };
+                                            }).sort((a, b) => a.count - b.count);
+                                            computerChoice = minSafe[0].country;
+                                        }
+                                    }
+                                } else {
+                                    const minSafe = safeFromRAttack.map(country => {
+                                        const nextAvailable = getAvailableCountries([...gameState.usedCountries, country], country);
+                                        const safeFromRAttackNext = nextAvailable.filter(c => {
+                                            const nextNextAvailable = getAvailableCountries([...gameState.usedCountries, country, c], c);
+                                            return !nextNextAvailable.some(c2 => getLastCharInitial(c2) === 'ㄹ');
+                                        });
+                                        return { country, count: safeFromRAttackNext.length };
+                                    }).sort((a, b) => a.count - b.count);
+                                    computerChoice = minSafe[0].country;
+                                }
+                            } else {
+                                computerChoice = available[Math.floor(Math.random() * available.length)];
+                            }
+                        }
+                    }
+                }
+                if (!computerChoice && (gameState.difficulty === 'normal' || gameState.difficulty === 'hard' || gameState.difficulty === 'hell')) {
                     const grenadaUsed = gameState.usedCountries.includes('그레나다');
                     const dToGCount = gameState.usedCountries.filter(c => {
                         const first = getFirstCharInitial(c);
                         const last = getLastCharInitial(c);
                         return first === 'ㄷ' && last === 'ㄱ';
                     }).length;
-                    const isDWinSituation = dToGCount === 1 && !grenadaUsed;
+                    const gToDCount = gameState.usedCountries.filter(c => {
+                        const first = getFirstCharInitial(c);
+                        const last = getLastCharInitial(c);
+                        return first === 'ㄱ' && last === 'ㄷ';
+                    }).length;
+                    const isDWinSituation = (dToGCount - gToDCount) > 0 && !grenadaUsed;
                     if (isDWinSituation && (gameState.difficulty === 'hard' || gameState.difficulty === 'hell')) {
                         const dEnding = available.filter(c => getLastCharInitial(c) === 'ㄷ');
                         if (dEnding.length > 0) {
@@ -1607,8 +2608,40 @@
                                     });
                                     if (filtered.length > 0) {
                                         computerChoice = filtered[Math.floor(Math.random() * filtered.length)];
+                                } else {
+                                    computerChoice = oddCountCountries[Math.floor(Math.random() * oddCountCountries.length)];
+                                }
+                            } else {
+                                const safeFromDAttack = available.filter(country => {
+                                    const nextAvailable = getAvailableCountries([...gameState.usedCountries, country], country);
+                                    return !nextAvailable.some(c => getLastCharInitial(c) === 'ㄷ');
+                                });
+                                if (safeFromDAttack.length > 0) {
+                                    if (gameState.difficulty === 'hell') {
+                                        const depth5Safe = findSafeFromAttack(safeFromDAttack, 'ㄷ', 0, 5, gameState.usedCountries);
+                                        if (depth5Safe.length > 0) {
+                                            computerChoice = depth5Safe[Math.floor(Math.random() * depth5Safe.length)];
+                                        } else {
+                                            const minSafe = safeFromDAttack.map(country => {
+                                                const nextAvailable = getAvailableCountries([...gameState.usedCountries, country], country);
+                                                const safeFromDAttackNext = nextAvailable.filter(c => {
+                                                    const nextNextAvailable = getAvailableCountries([...gameState.usedCountries, country, c], c);
+                                                    return !nextNextAvailable.some(c2 => getLastCharInitial(c2) === 'ㄷ');
+                                                });
+                                                return { country, count: safeFromDAttackNext.length };
+                                            }).sort((a, b) => a.count - b.count);
+                                            computerChoice = minSafe[0].country;
+                                        }
                                     } else {
-                                        computerChoice = oddCountCountries[Math.floor(Math.random() * oddCountCountries.length)];
+                                        const minSafe = safeFromDAttack.map(country => {
+                                            const nextAvailable = getAvailableCountries([...gameState.usedCountries, country], country);
+                                            const safeFromDAttackNext = nextAvailable.filter(c => {
+                                                const nextNextAvailable = getAvailableCountries([...gameState.usedCountries, country, c], c);
+                                                return !nextNextAvailable.some(c2 => getLastCharInitial(c2) === 'ㄷ');
+                                            });
+                                            return { country, count: safeFromDAttackNext.length };
+                                        }).sort((a, b) => a.count - b.count);
+                                        computerChoice = minSafe[0].country;
                                     }
                                 } else {
                                     computerChoice = available[Math.floor(Math.random() * available.length)];
@@ -1616,6 +2649,7 @@
                             }
                         }
                     }
+                }
                 }
                 if (!computerChoice) {
                     if (gameState.difficulty === 'hell') {
@@ -1667,6 +2701,38 @@
                 gameState.firstTurnDone = true;
                 disableGameSettings();
             }
+            
+            // 데이터 수집 (컴퓨터 선택)
+            if (dataCollectionEnabled) {
+                const prevUsed = gameState.usedCountries.slice(0, -1);
+                const prevLast = gameState.usedCountries.length > 1 ? gameState.usedCountries[gameState.usedCountries.length - 2] : null;
+                collectGameData(computerChoice, prevUsed, prevLast, available);
+                updateModelStatus();
+                
+                // 충분한 데이터가 모이면 자동 학습 (중복 방지)
+                if (!isTraining && trainingData.length >= 50 && trainingData.length - lastAutoTrainCount >= 50) {
+                    if (!aiModel) {
+                        // 첫 학습
+                        setTimeout(async () => {
+                            showMessage(`${trainingData.length}개의 데이터가 수집되었습니다. 자동 학습을 시작합니다...`, 'info');
+                            const success = await trainModel(30);
+                            if (success) {
+                                lastAutoTrainCount = trainingData.length;
+                            }
+                        }, 500);
+                    } else if (trainingData.length >= 100 && trainingData.length - lastAutoTrainCount >= 100) {
+                        // 재학습
+                        setTimeout(async () => {
+                            showMessage(`${trainingData.length}개의 데이터로 모델을 재학습합니다...`, 'info');
+                            const success = await trainModel(20);
+                            if (success) {
+                                lastAutoTrainCount = trainingData.length;
+                            }
+                        }, 500);
+                    }
+                }
+            }
+            
             addToHistory(computerChoice, 'computer');
             saveGameState();
             updateAvailableCountries();
@@ -1678,9 +2744,8 @@
                     recordLoss();
                 }
             } else {
-                const winProbability = calculateWinProbability(computerChoice, gameState.usedCountries);
                 const nextInitial = getLastCharInitial(computerChoice);
-                showMessage(`컴퓨터: "${computerChoice}" (다음: ${nextInitial}로 시작하는 나라, 승리: ${winProbability}%)`, 'info');
+                showMessage(`컴퓨터: "${computerChoice}" (다음: ${nextInitial}로 시작하는 나라)`, 'info');
             }
         }
         function isLoopCountry(country, availableCountries) {
