@@ -817,6 +817,9 @@
             if (savedState) {
                 try {
                     const state = JSON.parse(savedState);
+                    if (state.gameEnded) {
+                        return false;
+                    }
                     if (state.usedCountries && state.usedCountries.length > 0) {
                         gameState.usedCountries = state.usedCountries;
                         gameState.lastCountry = state.lastCountry;
@@ -841,6 +844,45 @@
         }
         function clearGameState() {
             localStorage.removeItem('countryGameState');
+        }
+        function calculateWinProbability(country, usedCountries) {
+            const nextAvailable = getAvailableCountries([...usedCountries, country], country);
+            if (nextAvailable.length === 0) {
+                return 100;
+            }
+            const grenadaUsed = usedCountries.includes('그레나다');
+            const dToGCount = usedCountries.filter(c => {
+                const first = getFirstCharInitial(c);
+                const last = getLastCharInitial(c);
+                return first === 'ㄷ' && last === 'ㄱ';
+            }).length;
+            const isDWinSituation = dToGCount === 1 && !grenadaUsed;
+            if (isDWinSituation) {
+                const lastInitial = getLastCharInitial(country);
+                if (lastInitial === 'ㄷ') {
+                    return 95;
+                }
+            }
+            const allEndWithDOrR = nextAvailable.every(c => {
+                const lastInitial = getLastCharInitial(c);
+                return lastInitial === 'ㄷ' || lastInitial === 'ㄹ';
+            });
+            if (allEndWithDOrR && nextAvailable.length > 0) {
+                return 10;
+            }
+            const safeEndings = ['ㄱ', 'ㄹ', 'ㅂ', 'ㅈ', 'ㅋ', 'ㅌ'];
+            const safeEndingCount = nextAvailable.filter(c => {
+                const lastInitial = getLastCharInitial(c);
+                return safeEndings.includes(lastInitial);
+            }).length;
+            const totalCount = nextAvailable.length;
+            if (totalCount === 0) {
+                return 100;
+            }
+            const safeRatio = safeEndingCount / totalCount;
+            const baseProbability = 50;
+            const probability = Math.round(baseProbability + (safeRatio - 0.5) * 40);
+            return Math.max(10, Math.min(90, probability));
         }
         function updateStatsDisplay() {
             const stats = getStats();
@@ -887,15 +929,6 @@
                 recordLoss();
                 updateGameInfo();
             }
-        }
-        function computerSurrender() {
-            if (gameState.gameEnded) {
-                return;
-            }
-            gameState.gameEnded = true;
-            showMessage('🎉 축하합니다! 컴퓨터가 기권했습니다. 당신이 승리했습니다!', 'success');
-            recordWin();
-            updateGameInfo();
         }
         function isComputerTrapped() {
             const available = getAvailableCountries(gameState.usedCountries, gameState.lastCountry);
@@ -1428,10 +1461,6 @@
             return available[Math.floor(Math.random() * available.length)];
         }
         function computerTurn() {
-            if (gameState.difficulty !== 'easy' && isComputerTrapped()) {
-                computerSurrender();
-                return;
-            }
             const available = getAvailableCountries(gameState.usedCountries, gameState.lastCountry);
             if (available.length === 0) {
                 if (!gameState.gameEnded) {
@@ -1487,10 +1516,6 @@
                     if (safeCountries.length > 0) {
                         computerChoice = safeCountries[Math.floor(Math.random() * safeCountries.length)];
                     } else {
-                        if (gameState.difficulty === 'hell') {
-                            computerSurrender();
-                            return;
-                        }
                         computerChoice = available[Math.floor(Math.random() * available.length)];
                     }
                 } else {
@@ -1653,18 +1678,9 @@
                     recordLoss();
                 }
             } else {
-                if (gameState.difficulty !== 'easy') {
-                    const allEndWithDOrR = nextAvailable.every(country => {
-                        const lastInitial = getLastCharInitial(country);
-                        return lastInitial === 'ㄷ' || lastInitial === 'ㄹ';
-                    });
-                    if (allEndWithDOrR && nextAvailable.length > 0 && gameState.difficulty === 'hell') {
-                        computerSurrender();
-                        return;
-                    }
-                }
+                const winProbability = calculateWinProbability(computerChoice, gameState.usedCountries);
                 const nextInitial = getLastCharInitial(computerChoice);
-                showMessage(`컴퓨터: "${computerChoice}" (다음: ${nextInitial}로 시작하는 나라)`, 'info');
+                showMessage(`컴퓨터: "${computerChoice}" (다음: ${nextInitial}로 시작하는 나라, 승리: ${winProbability}%)`, 'info');
             }
         }
         function isLoopCountry(country, availableCountries) {
