@@ -1,0 +1,1475 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>나라 끝말잇기</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            position: relative;
+            z-index: 1;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        .game-mode {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+        .mode-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            background: #667eea;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        .mode-btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+        .mode-btn.active {
+            background: #764ba2;
+        }
+        .search-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 999;
+            background: rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.3s ease;
+            max-height: 50vh;
+            overflow-y: auto;
+        }
+        .search-overlay.show {
+            display: block;
+        }
+        .search-panel {
+            background: white;
+            border-radius: 0 0 20px 20px;
+            padding: 20px 30px 30px 30px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            margin: 0 auto;
+            animation: slideDown 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideDown {
+            from { transform: translateY(-100%); }
+            to { transform: translateY(0); }
+        }
+        .search-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .search-header h2 {
+            margin: 0;
+            color: #333;
+        }
+        .close-btn {
+            background: #ff6b6b;
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+        .close-btn:hover {
+            background: #ee5a5a;
+        }
+        .game-area {
+            margin-bottom: 30px;
+        }
+        .game-layout {
+            display: grid;
+            grid-template-columns: 300px 1fr 350px;
+            gap: 25px;
+            margin-top: 20px;
+            max-width: 1600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .left-panel {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            height: fit-content;
+            position: sticky;
+            top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .right-panel {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            height: fit-content;
+            position: sticky;
+            top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .stats-section {
+            margin-bottom: 0;
+        }
+        .stats-section h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 18px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+        }
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .stat-item:last-child {
+            border-bottom: none;
+        }
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+        }
+        .stat-value {
+            color: #333;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .win-rate {
+            font-size: 28px;
+            color: #667eea;
+            font-weight: bold;
+            text-align: center;
+            margin: 15px 0;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            border: 2px solid #667eea;
+        }
+        .game-info-section {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+        }
+        .game-info-section h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 18px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+        }
+        .info-item {
+            padding: 8px 0;
+            font-size: 14px;
+            color: #666;
+        }
+        .info-item strong {
+            color: #333;
+            font-weight: bold;
+        }
+        .current-turn {
+            background: #e3f2fd;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 10px;
+            text-align: center;
+            font-weight: bold;
+            color: #1976d2;
+        }
+        .center-panel {
+            min-width: 0;
+        }
+        .turn-selection {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f0f4ff;
+            border-radius: 8px;
+        }
+        .turn-btn {
+            padding: 10px 20px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            background: white;
+            color: #667eea;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        .turn-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+        .turn-btn.selected {
+            background: #667eea;
+            color: white;
+        }
+        .input-container {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 15px 20px;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+            border-top: 2px solid #667eea;
+        }
+        .input-container .input-group {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        .center-panel {
+            padding-bottom: 100px;
+        }
+        .hamburger-menu {
+            display: none;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px;
+            cursor: pointer;
+            font-size: 24px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+        .hamburger-menu:hover {
+            background: #5568d3;
+        }
+        .panel-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 998;
+        }
+        .panel-overlay.show {
+            display: block;
+        }
+        .mobile-panel {
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            width: 280px;
+            background: white;
+            z-index: 999;
+            overflow-y: auto;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2);
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+        }
+        .mobile-panel.show {
+            transform: translateX(0);
+        }
+        .mobile-panel.left {
+            left: 0;
+        }
+        .mobile-panel.right {
+            right: 0;
+            transform: translateX(100%);
+        }
+        .mobile-panel.right.show {
+            transform: translateX(0);
+        }
+        .panel-close {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .panel-toggle-btn {
+            display: none;
+            padding: 10px 15px;
+            margin: 10px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        @media (max-width: 1400px) {
+            .game-layout {
+                grid-template-columns: 280px 1fr 320px;
+            }
+        }
+        @media (max-width: 1200px) {
+            .game-layout {
+                grid-template-columns: 250px 1fr 280px;
+            }
+        }
+        @media (max-width: 900px) {
+            .hamburger-menu {
+                display: block;
+            }
+            .panel-toggle-btn {
+                display: block;
+            }
+            .game-layout {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            .left-panel,
+            .right-panel {
+                display: none;
+            }
+            .center-panel {
+                padding-bottom: 100px;
+            }
+            .available-countries-list {
+                max-height: 400px;
+            }
+            .input-container {
+                padding: 12px 15px;
+            }
+            .input-container .input-group {
+                flex-direction: column;
+                gap: 10px;
+            }
+            .input-container button {
+                width: 100%;
+            }
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            background: #667eea;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .history {
+            background: #f5f5f5;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .history-item {
+            padding: 8px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+        }
+        .history-item.user {
+            background: #e3f2fd;
+            text-align: right;
+        }
+        .history-item.computer {
+            background: #fff3e0;
+        }
+        .message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .message.success {
+            background: #c8e6c9;
+            color: #2e7d32;
+        }
+        .message.error {
+            background: #ffcdd2;
+            color: #c62828;
+        }
+        .message.info {
+            background: #bbdefb;
+            color: #1565c0;
+        }
+        .search-results {
+            margin-top: 15px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+        }
+        .country-tag {
+            background: #667eea;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 5px;
+            text-align: center;
+            font-size: 14px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .controls button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .available-countries-section {
+            padding: 0;
+            background: transparent;
+            border: none;
+        }
+        .available-countries-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .available-countries-header h3 {
+            margin: 0;
+            color: #333;
+            font-size: 18px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+            width: 100%;
+        }
+        .available-countries-list {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
+        }
+        .available-country-tag {
+            background: #9e9e9e;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 5px;
+            text-align: left;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .available-country-tag:hover {
+            background: #757575;
+            transform: translateX(5px);
+        }
+        .available-country-tag.non-loop {
+            background: #667eea;
+            color: white;
+        }
+        .available-country-tag.non-loop:hover {
+            background: #5568d3;
+            transform: translateX(5px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌍 나라 끝말잇기</h1>
+        <button class="hamburger-menu" onclick="toggleLeftPanel()" id="hamburgerBtn">☰</button>
+        <div class="game-mode">
+            <button class="mode-btn active">컴퓨터와 플레이</button>
+            <button class="mode-btn" onclick="openSearch()">🔍 나라 검색</button>
+        </div>
+        <div id="gameArea" class="game-area">
+            <div id="turnSelection" class="turn-selection">
+                <div style="margin-right: 20px; line-height: 40px; font-weight: bold;">선공/후공 선택:</div>
+                <button class="turn-btn selected" onclick="selectTurn('user')" id="turnBtnUser">나 먼저 (선공)</button>
+                <button class="turn-btn" onclick="selectTurn('computer')" id="turnBtnComputer">컴퓨터 먼저 (후공)</button>
+            </div>
+            <div id="message" class="message info">게임을 시작하세요! 나라 이름을 입력해주세요.</div>
+            <div class="game-layout">
+                <div class="left-panel" id="leftPanel">
+                    <div class="stats-section">
+                        <h3>📊 승률 통계</h3>
+                        <div class="win-rate" id="winRate">0%</div>
+                        <div class="stat-item">
+                            <span class="stat-label">승리</span>
+                            <span class="stat-value" id="wins">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">패배</span>
+                            <span class="stat-value" id="losses">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">총 게임</span>
+                            <span class="stat-value" id="totalGames">0</span>
+                        </div>
+                    </div>
+                    <div class="game-info-section">
+                        <h3>🎮 현재 게임</h3>
+                        <div class="info-item">
+                            <strong>사용된 나라:</strong> <span id="usedCount">0</span>개
+                        </div>
+                        <div class="info-item">
+                            <strong>마지막 나라:</strong> <span id="lastCountryDisplay">-</span>
+                        </div>
+                        <div class="info-item">
+                            <strong>다음 초성:</strong> <span id="nextInitialDisplay">-</span>
+                        </div>
+                        <div class="current-turn" id="currentTurnDisplay">
+                            현재 차례: 나
+                        </div>
+                    </div>
+                </div>
+                <div class="center-panel">
+                    <div class="controls">
+                        <button onclick="startNewGame()">새 게임</button>
+                        <button onclick="undoMove()" id="undoBtn">무르기</button>
+                        <button onclick="surrender()" id="surrenderBtn" style="background-color: #dc3545;">기권</button>
+                        <button onclick="exportGameHistory()" id="exportBtn">기록 저장</button>
+                    </div>
+                    <div class="history" id="history"></div>
+                </div>
+                <div class="right-panel" id="rightPanel">
+                    <div class="available-countries-section" id="availableCountriesSection">
+                        <div class="available-countries-header">
+                            <h3>📋 다음에 가능한 나라들</h3>
+                        </div>
+                        <div class="info-item" style="margin-bottom: 10px; font-size: 13px; color: #666;">
+                            총 <strong id="availableCount">0</strong>개 가능
+                        </div>
+                        <div class="available-countries-list" id="availableCountriesList"></div>
+                    </div>
+                    <div class="game-info-section">
+                        <h3>💡 게임 팁</h3>
+                        <div class="info-item" style="font-size: 13px; line-height: 1.6;">
+                            <strong>🔄 뺏기 시스템:</strong><br>
+                            후공만 사용 가능합니다. 선공이 첫 단어를 입력하면, 그 단어가 승리할 가능성이 높을 때 "뺏기" 버튼을 눌러 그 단어를 다시 입력하면 차례가 바뀝니다. 이제 당신이 선공이 됩니다!<br><br>
+                            <strong>전략 팁:</strong>
+                            • ㄷ~ㄱ이 하나 빠지면 ㄷ이 이깁니다.<br>
+                            • ㄹ~ㅇ이 하나 빠지면 ㄹ이 이깁니다.<br>
+                            • ㅇ으로 시작하는 나라가 가장 많으며, 공격이 가장 많습니다!
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="panel-overlay" id="panelOverlay" onclick="closeAllPanels()"></div>
+        <div class="mobile-panel left" id="mobileLeftPanel">
+            <button class="panel-close" onclick="closeLeftPanel()">×</button>
+            <div class="left-panel" style="position: static; padding: 20px;">
+                <div class="stats-section">
+                    <h3>📊 승률 통계</h3>
+                    <div class="win-rate" id="winRateMobile">0%</div>
+                    <div class="stat-item">
+                        <span class="stat-label">승리</span>
+                        <span class="stat-value" id="winsMobile">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">패배</span>
+                        <span class="stat-value" id="lossesMobile">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">총 게임</span>
+                        <span class="stat-value" id="totalGamesMobile">0</span>
+                    </div>
+                </div>
+                <div class="game-info-section">
+                    <h3>🎮 현재 게임</h3>
+                    <div class="info-item">
+                        <strong>사용된 나라:</strong> <span id="usedCountMobile">0</span>개
+                    </div>
+                    <div class="info-item">
+                        <strong>마지막 나라:</strong> <span id="lastCountryDisplayMobile">-</span>
+                    </div>
+                    <div class="info-item">
+                        <strong>다음 초성:</strong> <span id="nextInitialDisplayMobile">-</span>
+                    </div>
+                    <div class="current-turn" id="currentTurnDisplayMobile">
+                        현재 차례: 나
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="mobile-panel right" id="mobileRightPanel">
+            <button class="panel-close" onclick="closeRightPanel()">×</button>
+            <div class="right-panel" style="position: static; padding: 20px;">
+                <div class="available-countries-section" id="availableCountriesSectionMobile">
+                    <div class="available-countries-header">
+                        <h3>📋 다음에 가능한 나라들</h3>
+                    </div>
+                    <div class="info-item" style="margin-bottom: 10px; font-size: 13px; color: #666;">
+                        총 <strong id="availableCountMobile">0</strong>개 가능
+                    </div>
+                    <div class="available-countries-list" id="availableCountriesListMobile"></div>
+                </div>
+                <div class="game-info-section">
+                    <h3>💡 게임 팁</h3>
+                    <div class="info-item" style="font-size: 13px; line-height: 1.6;">
+                        <strong>🔄 뺏기 시스템:</strong><br>
+                        후공만 사용 가능합니다. 선공이 첫 단어를 입력하면, 그 단어가 승리할 가능성이 높을 때 "뺏기" 버튼을 눌러 그 단어를 다시 입력하면 차례가 바뀝니다. 이제 당신이 선공이 됩니다!<br><br>
+                        <strong>전략 팁:</strong>
+                        • ㄷ~ㄱ이 하나 빠지면 ㄷ이 이깁니다.<br>
+                        • ㄹ~ㅇ이 하나 빠지면 ㄹ이 이깁니다.<br>
+                        • ㅇ으로 시작하는 나라가 가장 많으며, 공격이 가장 많습니다!
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="input-container">
+            <div class="input-group">
+                <div style="display: flex; gap: 10px; width: 100%;">
+                    <button class="panel-toggle-btn" onclick="toggleLeftPanel()">📊 통계</button>
+                    <button class="panel-toggle-btn" onclick="toggleRightPanel()">📋 나라</button>
+                </div>
+                <div style="display: flex; gap: 10px; width: 100%;">
+                    <input type="text" id="countryInput" placeholder="나라 이름을 입력하세요 (뺏기: 선공이 입력한 단어를 그대로 입력)" onkeypress="handleKeyPress(event)">
+                    <button onclick="submitCountry()">제출</button>
+                </div>
+            </div>
+        </div>
+        <div id="searchOverlay" class="search-overlay" onclick="closeSearch(event)">
+            <div class="search-panel" onclick="event.stopPropagation()">
+                <div class="search-header">
+                    <h2>🔍 나라 검색</h2>
+                    <button class="close-btn" onclick="closeSearch()">닫기</button>
+                </div>
+                <div class="input-group">
+                    <input type="text" id="searchInput" placeholder="자음을 입력하세요 (예: ㄱ, ㄴ, ㄷ...)" maxlength="1" onkeyup="searchCountries()" autofocus>
+                </div>
+                <div class="search-results" id="searchResults"></div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const COUNTRY_NAMES = [
+            "가나", "가봉", "가이아나", "감비아", "과테말라", "그레나다", "그리스", "기니", "기니비사우",
+            "나미비아", "나우루", "나이지리아", "남수단", "남아프리카공화국", "네덜란드", "네팔", "노르웨이", "뉴질랜드", "니제르", "니카라과",
+            "대한민국", "덴마크", "도미니카연방", "도미니카공화국", "독일", "동티모르",
+            "라오스", "라이베리아", "라트비아", "러시아", "레바논", "레소토", "루마니아", "룩셈부르크", "르완다", "리비아", "리투아니아", "리히텐슈타인",
+            "마다가스카르", "마셜제도", "마케도니아", "말라위", "말레이시아", "말리", "멕시코", "모나코", "모로코", "모리셔스", "모리타니", "모잠비크", "몬테네그로", "몰도바", "몰디브", "몰타", "몽골", "미국", "미얀마", "미크로네시아",
+            "바누아투", "바레인", "바베이도스", "바하마", "방글라데시", "베냉", "베네수엘라", "베트남", "벨기에", "벨라루스", "벨리즈", "보스니아헤르체고비나", "보츠와나", "볼리비아", "부룬디", "부르키나파소", "부탄", "불가리아", "브라질", "브루나이",
+            "사모아", "사우디아라비아", "산마리노", "상투메프린시페", "세네갈", "세르비아", "세이셸", "세인트키츠네비스", "세인트루시아", "세인트빈센트그레나딘", "소말리아", "솔로몬제도", "수단", "수리남", "스리랑카", "스웨덴", "스위스", "스페인", "슬로바키아", "슬로베니아", "시리아", "시에라리온", "싱가포르",
+            "아랍에미리트", "아르메니아", "아르헨티나", "아이슬란드", "아일랜드", "아제르바이잔", "아프가니스탄", "안도라", "알바니아", "알제리", "앙골라", "앤티가바부다", "에리트레아", "에스와티니", "에스토니아", "에콰도르", "에티오피아", "엘살바도르", "영국", "예멘", "오만", "오스트레일리아", "오스트리아", "온두라스", "요르단", "우간다", "우루과이", "우즈베키스탄", "우크라이나", "이라크", "이란", "이스라엘", "이집트", "이탈리아", "인도", "인도네시아", "일본",
+            "자메이카", "잠비아", "적도기니", "조선민주주의인민공화국", "조지아", "중앙아프리카공화국", "중국", "지부티", "짐바브웨",
+            "차드", "체코", "칠레",
+            "카메룬", "카보베르데", "카자흐스탄", "카타르", "캄보디아", "캐나다", "케냐", "코모로", "코스타리카", "코트디부아르", "콜롬비아", "콩고공화국", "콩고민주공화국", "쿠바", "쿠웨이트", "크로아티아", "키르기스스탄", "키리바시", "키프로스",
+            "태국", "타지키스탄", "탄자니아", "터키", "토고", "통가", "투르크메니스탄", "투발루", "튀니지", "트리니다드토바고",
+            "파나마", "파라과이", "파키스탄", "파푸아뉴기니", "팔라우", "페루", "포르투갈", "폴란드", "프랑스", "피지", "핀란드", "필리핀",
+            "헝가리"
+        ];
+        function getFirstCharInitial(text) {
+            if (!text || text.length === 0) return null;
+            const firstChar = text[0];
+            const charCode = firstChar.charCodeAt(0);
+            if (charCode >= 0xAC00 && charCode <= 0xD7A3) {
+                const initialIndex = Math.floor((charCode - 0xAC00) / 588);
+                const initials = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+                return initials[initialIndex];
+            }
+            return null;
+        }
+        function getLastCharInitial(countryName) {
+            const lastChar = countryName[countryName.length - 1];
+            const charCode = lastChar.charCodeAt(0);
+            if (charCode >= 0xAC00 && charCode <= 0xD7A3) {
+                const initialIndex = Math.floor((charCode - 0xAC00) / 588);
+                const initials = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+                return initials[initialIndex];
+            }
+            return null;
+        }
+        function findCountry(name) {
+            return COUNTRY_NAMES.find(c => c === name);
+        }
+        function findCountriesByInitial(initial) {
+            return COUNTRY_NAMES.filter(c => getFirstCharInitial(c) === initial);
+        }
+        function getAvailableCountries(usedCountries, lastCountry) {
+            if (!lastCountry) {
+                return COUNTRY_NAMES.filter(c => !usedCountries.includes(c));
+            }
+            const last = findCountry(lastCountry);
+            if (!last) return [];
+            const nextInitial = getLastCharInitial(last);
+            if (!nextInitial) return [];
+            return COUNTRY_NAMES.filter(c => 
+                getFirstCharInitial(c) === nextInitial && !usedCountries.includes(c)
+            );
+        }
+        const gameState = {
+            usedCountries: [],
+            lastCountry: null,
+            gameMode: 'vsComputer',
+            gameEnded: false,
+            firstPlayer: 'user', 
+            currentPlayer: 'user', 
+            firstTurnDone: false, 
+            firstTurnCountry: null 
+        };
+        const gameHistory = [];
+        function getStats() {
+            const stats = localStorage.getItem('countryGameStats');
+            if (stats) {
+                return JSON.parse(stats);
+            }
+            return { wins: 0, losses: 0, totalGames: 0 };
+        }
+        function saveStats(stats) {
+            localStorage.setItem('countryGameStats', JSON.stringify(stats));
+        }
+        function updateStatsDisplay() {
+            const stats = getStats();
+            const winRate = stats.totalGames > 0 
+                ? Math.round((stats.wins / stats.totalGames) * 100) 
+                : 0;
+            document.getElementById('wins').textContent = stats.wins;
+            document.getElementById('losses').textContent = stats.losses;
+            document.getElementById('totalGames').textContent = stats.totalGames;
+            document.getElementById('winRate').textContent = winRate + '%';
+            const winsMobile = document.getElementById('winsMobile');
+            const lossesMobile = document.getElementById('lossesMobile');
+            const totalGamesMobile = document.getElementById('totalGamesMobile');
+            const winRateMobile = document.getElementById('winRateMobile');
+            if (winsMobile) winsMobile.textContent = stats.wins;
+            if (lossesMobile) lossesMobile.textContent = stats.losses;
+            if (totalGamesMobile) totalGamesMobile.textContent = stats.totalGames;
+            if (winRateMobile) winRateMobile.textContent = winRate + '%';
+        }
+        function recordWin() {
+            const stats = getStats();
+            stats.wins++;
+            stats.totalGames++;
+            saveStats(stats);
+            updateStatsDisplay();
+        }
+        function recordLoss() {
+            const stats = getStats();
+            stats.losses++;
+            stats.totalGames++;
+            saveStats(stats);
+            updateStatsDisplay();
+        }
+        function surrender() {
+            if (gameState.gameEnded) {
+                showMessage('이미 게임이 종료되었습니다.', 'error');
+                return;
+            }
+            if (confirm('정말 기권하시겠습니까? 패배로 기록됩니다.')) {
+                gameState.gameEnded = true;
+                showMessage('😢 기권하셨습니다. 컴퓨터가 승리했습니다!', 'error');
+                recordLoss();
+                updateGameInfo();
+            }
+        }
+        function exportGameHistory() {
+            const historyEl = document.getElementById('history');
+            if (!historyEl || historyEl.children.length === 0) {
+                showMessage('저장할 게임 기록이 없습니다.', 'error');
+                return;
+            }
+            let textHistory = '\u200b'.repeat(500);
+            textHistory += '나라 끝말잇기 게임 기록\n';
+            textHistory += '='.repeat(30) + '\n\n';
+            gameHistory.forEach((item, index) => {
+                const playerName = item.player === 'user' ? '나' : '컴퓨터';
+                textHistory += `${index + 1}. ${playerName}: ${item.country}\n`;
+            });
+            textHistory += '\n' + '='.repeat(30) + '\n';
+            textHistory += `총 ${gameHistory.length}수\n`;
+            textHistory += `사용된 나라: ${gameState.usedCountries.length}개\n`;
+            navigator.clipboard.writeText(textHistory).then(() => {
+                showMessage('게임 기록이 클립보드에 복사되었습니다!', 'success');
+            }).catch(() => {
+                const textarea = document.createElement('textarea');
+                textarea.value = textHistory;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                showMessage('게임 기록이 클립보드에 복사되었습니다!', 'success');
+            });
+            const containerEl = document.querySelector('.container');
+            html2canvas(containerEl, {
+                backgroundColor: '#ffffff',
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                windowWidth: containerEl.scrollWidth,
+                windowHeight: containerEl.scrollHeight
+            }).then(canvas => {
+                canvas.toBlob(blob => {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `나라끝말잇기_${new Date().toISOString().slice(0, 10)}_${Date.now()}.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                });
+            }).catch(() => {
+                showMessage('이미지 저장에 실패했습니다. 텍스트는 복사되었습니다.', 'error');
+            });
+        }
+        function selectTurn(player) {
+            gameState.firstPlayer = player;
+            gameState.currentPlayer = player;
+            document.getElementById('turnBtnUser').classList.remove('selected');
+            document.getElementById('turnBtnComputer').classList.remove('selected');
+            if (player === 'user') {
+                document.getElementById('turnBtnUser').classList.add('selected');
+                showMessage('당신이 선공입니다! 나라 이름을 입력해주세요.', 'info');
+            } else {
+                document.getElementById('turnBtnComputer').classList.add('selected');
+                showMessage('컴퓨터가 선공입니다!', 'info');
+                setTimeout(() => {
+                    computerTurn();
+                }, 500);
+            }
+            if (!gameState.firstTurnDone) {
+                document.getElementById('stealSection').style.display = 'none';
+            }
+        }
+        function toggleLeftPanel() {
+            const panel = document.getElementById('mobileLeftPanel');
+            const overlay = document.getElementById('panelOverlay');
+            const rightPanel = document.getElementById('mobileRightPanel');
+            if (panel.classList.contains('show')) {
+                closeLeftPanel();
+            } else {
+                rightPanel.classList.remove('show');
+                panel.classList.add('show');
+                overlay.classList.add('show');
+            }
+        }
+        function toggleRightPanel() {
+            const panel = document.getElementById('mobileRightPanel');
+            const overlay = document.getElementById('panelOverlay');
+            const leftPanel = document.getElementById('mobileLeftPanel');
+            if (panel.classList.contains('show')) {
+                closeRightPanel();
+            } else {
+                leftPanel.classList.remove('show');
+                panel.classList.add('show');
+                overlay.classList.add('show');
+            }
+        }
+        function closeLeftPanel() {
+            document.getElementById('mobileLeftPanel').classList.remove('show');
+            checkPanelsClosed();
+        }
+        function closeRightPanel() {
+            document.getElementById('mobileRightPanel').classList.remove('show');
+            checkPanelsClosed();
+        }
+        function closeAllPanels() {
+            document.getElementById('mobileLeftPanel').classList.remove('show');
+            document.getElementById('mobileRightPanel').classList.remove('show');
+            document.getElementById('panelOverlay').classList.remove('show');
+        }
+        function checkPanelsClosed() {
+            const leftPanel = document.getElementById('mobileLeftPanel');
+            const rightPanel = document.getElementById('mobileRightPanel');
+            const overlay = document.getElementById('panelOverlay');
+            if (!leftPanel.classList.contains('show') && !rightPanel.classList.contains('show')) {
+                overlay.classList.remove('show');
+            }
+        }
+        window.addEventListener('DOMContentLoaded', function() {
+            updateUndoButton();
+            updateAvailableCountries();
+            updateStatsDisplay();
+        });
+        function openSearch() {
+            const overlay = document.getElementById('searchOverlay');
+            overlay.classList.add('show');
+            document.getElementById('searchInput').focus();
+            document.body.style.overflow = 'hidden';
+        }
+        function closeSearch(event) {
+            if (event && event.target !== event.currentTarget) {
+                return;
+            }
+            const overlay = document.getElementById('searchOverlay');
+            overlay.classList.remove('show');
+            document.body.style.overflow = '';
+            document.getElementById('searchInput').value = '';
+            document.getElementById('searchResults').innerHTML = '';
+        }
+        function showMessage(text, type) {
+            const messageEl = document.getElementById('message');
+            messageEl.textContent = text;
+            messageEl.className = `message ${type}`;
+        }
+        function addToHistory(country, player) {
+            const historyEl = document.getElementById('history');
+            const item = document.createElement('div');
+            item.className = `history-item ${player}`;
+            item.textContent = `${player === 'user' ? '👤 나' : '🤖 컴퓨터'}: ${country}`;
+            historyEl.appendChild(item);
+            historyEl.scrollTop = historyEl.scrollHeight;
+            gameHistory.push({
+                country: country,
+                player: player,
+                usedCountries: [...gameState.usedCountries],
+                lastCountry: gameState.lastCountry,
+                currentPlayer: gameState.currentPlayer,
+                firstTurnDone: gameState.firstTurnDone,
+                firstTurnCountry: gameState.firstTurnCountry,
+                gameEnded: gameState.gameEnded
+            });
+            updateUndoButton();
+        }
+        function updateUndoButton() {
+            const undoBtn = document.getElementById('undoBtn');
+            if (gameHistory.length === 0) {
+                undoBtn.disabled = true;
+                undoBtn.style.opacity = '0.5';
+                undoBtn.style.cursor = 'not-allowed';
+            } else {
+                undoBtn.disabled = false;
+                undoBtn.style.opacity = '1';
+                undoBtn.style.cursor = 'pointer';
+            }
+        }
+        function undoMove() {
+            if (gameHistory.length === 0) {
+                showMessage('무를 수 있는 턴이 없습니다.', 'error');
+                return;
+            }
+            let itemsToRemove = 2;
+            if (gameHistory.length < 2) {
+                itemsToRemove = gameHistory.length;
+            }
+            for (let i = 0; i < itemsToRemove; i++) {
+                gameHistory.pop();
+            }
+            if (gameHistory.length === 0) {
+                gameState.usedCountries = [];
+                gameState.lastCountry = null;
+                gameState.currentPlayer = gameState.firstPlayer;
+                gameState.firstTurnDone = false;
+                gameState.firstTurnCountry = null;
+                gameState.gameEnded = false;
+            } else {
+                const prevState = gameHistory[gameHistory.length - 1];
+                gameState.usedCountries = [...prevState.usedCountries];
+                gameState.lastCountry = prevState.lastCountry;
+                gameState.currentPlayer = prevState.currentPlayer;
+                gameState.firstTurnDone = prevState.firstTurnDone;
+                gameState.firstTurnCountry = prevState.firstTurnCountry;
+                gameState.gameEnded = prevState.gameEnded;
+            }
+            const historyEl = document.getElementById('history');
+            historyEl.innerHTML = '';
+            gameHistory.forEach(item => {
+                const historyItem = document.createElement('div');
+                historyItem.className = `history-item ${item.player}`;
+                historyItem.textContent = `${item.player === 'user' ? '👤 나' : '🤖 컴퓨터'}: ${item.country}`;
+                historyEl.appendChild(historyItem);
+            });
+            historyEl.scrollTop = historyEl.scrollHeight;
+            updateAvailableCountries();
+            updateGameInfo();
+            updateUndoButton();
+            showMessage(itemsToRemove === 2 ? '한 턴을 무르기했습니다.' : '무르기를 실행했습니다.', 'info');
+        }
+        function submitCountry() {
+            const input = document.getElementById('countryInput');
+            const country = input.value.trim();
+            if (!country) {
+                showMessage('나라 이름을 입력해주세요.', 'error');
+                return;
+            }
+            if (gameState.firstPlayer === 'computer' && 
+                !gameState.firstTurnDone && 
+                gameState.firstTurnCountry && 
+                country === gameState.firstTurnCountry &&
+                gameState.currentPlayer === 'user') {
+                gameState.usedCountries = [country];
+                gameState.lastCountry = country;
+                gameState.firstPlayer = 'user'; 
+                gameState.currentPlayer = 'user';
+                gameState.firstTurnDone = true;
+                gameState.firstTurnCountry = null;
+                addToHistory(country + ' (뺏기)', 'user');
+                showMessage(`"${country}"를 뺏었습니다! 이제 당신이 선공입니다.`, 'success');
+                input.value = '';
+                updateAvailableCountries();
+                updateGameInfo();
+                return;
+            }
+            if (gameState.lastCountry === null) {
+                if (!findCountry(country)) {
+                    showMessage(`"${country}"는 유효한 나라 이름이 아닙니다.`, 'error');
+                    return;
+                }
+                if (gameState.usedCountries.includes(country)) {
+                    showMessage(`"${country}"는 이미 사용되었습니다.`, 'error');
+                    return;
+                }
+                if (!gameState.firstTurnDone && gameState.firstPlayer === 'user') {
+                    gameState.firstTurnCountry = country;
+                }
+                gameState.usedCountries.push(country);
+                gameState.lastCountry = country;
+                gameState.currentPlayer = 'computer';
+                addToHistory(country, 'user');
+                showMessage(`좋습니다! "${country}" 다음에 올 수 있는 나라를 찾아보세요.`, 'success');
+                input.value = '';
+                updateAvailableCountries();
+                updateGameInfo();
+                setTimeout(() => {
+                    computerTurn();
+                }, 100);
+                return;
+            }
+            const lastInitial = getLastCharInitial(gameState.lastCountry);
+            const currentInitial = getFirstCharInitial(country);
+            if (lastInitial !== currentInitial) {
+                showMessage(`"${gameState.lastCountry}"의 마지막 글자(${lastInitial})로 시작하는 나라를 입력해야 합니다.`, 'error');
+                return;
+            }
+            if (!findCountry(country)) {
+                showMessage(`"${country}"는 유효한 나라 이름이 아닙니다.`, 'error');
+                return;
+            }
+            if (gameState.usedCountries.includes(country)) {
+                showMessage(`"${country}"는 이미 사용되었습니다.`, 'error');
+                return;
+            }
+            gameState.usedCountries.push(country);
+            gameState.lastCountry = country;
+            gameState.currentPlayer = 'computer';
+            addToHistory(country, 'user');
+            showMessage(`정답입니다! "${country}" 다음에 올 수 있는 나라를 찾아보세요.`, 'success');
+            input.value = '';
+            updateAvailableCountries();
+            setTimeout(() => {
+                computerTurn();
+            }, 100);
+        }
+        function chooseStrategicCountry(available) {
+            const grenadaUsed = gameState.usedCountries.includes('그레나다');
+            if (gameState.lastCountry && gameState.currentPlayer === 'computer') {
+                const availableWithLastCountry = [...available, gameState.lastCountry];
+                const lastCountryIsLoop = isLoopCountry(gameState.lastCountry, availableWithLastCountry);
+                if (lastCountryIsLoop) {
+                    const loopCountries = available.filter(c => isLoopCountry(c, available));
+                    if (loopCountries.length > 0) {
+                        return loopCountries[Math.floor(Math.random() * loopCountries.length)];
+                    }
+                }
+            }
+            const dToGCount = gameState.usedCountries.filter(c => {
+                const first = getFirstCharInitial(c);
+                const last = getLastCharInitial(c);
+                return first === 'ㄷ' && last === 'ㄱ';
+            }).length;
+            if (dToGCount === 1 && !grenadaUsed) {
+                const dEnding = available.filter(c => getLastCharInitial(c) === 'ㄷ');
+                if (dEnding.length > 0) {
+                    return dEnding[0];
+                }
+            }
+            const rToYCount = gameState.usedCountries.filter(c => {
+                const first = getFirstCharInitial(c);
+                const last = getLastCharInitial(c);
+                return first === 'ㄹ' && last === 'ㅇ';
+            }).length;
+            const yToRCount = gameState.usedCountries.filter(c => {
+                const first = getFirstCharInitial(c);
+                const last = getLastCharInitial(c);
+                return first === 'ㅇ' && last === 'ㄹ';
+            }).length;
+            if (rToYCount - yToRCount > 0) {
+                const rEnding = available.filter(c => getLastCharInitial(c) === 'ㄹ');
+                if (rEnding.length > 0) {
+                    return rEnding[0];
+                }
+            }
+            const dToGUsed = gameState.usedCountries.filter(c => {
+                const first = getFirstCharInitial(c);
+                const last = getLastCharInitial(c);
+                return first === 'ㄷ' && last === 'ㄱ';
+            });
+            if (dToGUsed.length >= 2) {
+                const dEnding = available.filter(c => getLastCharInitial(c) === 'ㄷ');
+                if (dEnding.length > 0) {
+                    if (dEnding.includes('그레나다') && !grenadaUsed) {
+                        return '그레나다';
+                    }
+                    return dEnding[0];
+                }
+            }
+            if (grenadaUsed && dToGUsed.length >= 1) {
+                const dEnding = available.filter(c => getLastCharInitial(c) === 'ㄷ');
+                if (dEnding.length > 0) {
+                    return dEnding[0];
+                }
+            }
+            if (gameState.firstPlayer !== 'computer') {
+                const dToGCountries = available.filter(c => {
+                    const first = getFirstCharInitial(c);
+                    const last = getLastCharInitial(c);
+                    return first === 'ㄷ' && last === 'ㄱ' && !isLoopCountry(c, available);
+                });
+                if (dToGCountries.length > 0) {
+                    const unusedDToG = dToGCountries.filter(c => !gameState.usedCountries.includes(c));
+                    if (unusedDToG.length > 0) {
+                        return unusedDToG[0];
+                    }
+                }
+            }
+            if (gameState.firstPlayer !== 'computer') {
+                const rToYCountries = available.filter(c => {
+                    const first = getFirstCharInitial(c);
+                    const last = getLastCharInitial(c);
+                    return first === 'ㄹ' && last === 'ㅇ' && !isLoopCountry(c, available);
+                });
+                if (rToYCountries.length > 0) {
+                    const unusedRToY = rToYCountries.filter(c => !gameState.usedCountries.includes(c));
+                    if (unusedRToY.length > 0) {
+                        return unusedRToY[0];
+                    }
+                }
+            }
+            if (gameState.lastCountry === '르완다') {
+                const eastTimor = available.find(c => c === '동티모르');
+                if (eastTimor) {
+                    return eastTimor;
+                }
+            }
+            const safeEndings = ['ㄱ', 'ㄹ', 'ㅌ', 'ㅍ', 'ㅎ']; 
+            const safeEndingCountries = available.filter(c => {
+                const ending = getLastCharInitial(c);
+                return safeEndings.includes(ending);
+            });
+            const nonLoopSafe = safeEndingCountries.filter(c => !isLoopCountry(c, available));
+            if (nonLoopSafe.length > 0) {
+                const rEndingNonLoop = nonLoopSafe.filter(c => getLastCharInitial(c) === 'ㄹ');
+                if (rEndingNonLoop.length > 0) {
+                    const eastTimorUsed = gameState.usedCountries.includes('동티모르');
+                    const lesotho = rEndingNonLoop.find(c => c === '레소토');
+                    if (lesotho && !eastTimorUsed) {
+                        return lesotho;
+                    }
+                    if (eastTimorUsed) {
+                        const rwanda = rEndingNonLoop.find(c => c === '르완다');
+                        if (rwanda) return rwanda;
+                    }
+                    return rEndingNonLoop[0];
+                }
+                return nonLoopSafe[0];
+            }
+            if (safeEndingCountries.length > 0) {
+                const rEndingCountries = safeEndingCountries.filter(c => getLastCharInitial(c) === 'ㄹ');
+                if (rEndingCountries.length > 0) {
+                    const eastTimorUsed = gameState.usedCountries.includes('동티모르');
+                    const lesotho = rEndingCountries.find(c => c === '레소토');
+                    if (lesotho && !eastTimorUsed) {
+                        return lesotho;
+                    }
+                    if (eastTimorUsed) {
+                        const rwanda = rEndingCountries.find(c => c === '르완다');
+                        if (rwanda) return rwanda;
+                    }
+                    return rEndingCountries[0];
+                }
+                return safeEndingCountries[0];
+            }
+            if (gameState.lastCountry && gameState.currentPlayer === 'computer') {
+                const lastEnding = getLastCharInitial(gameState.lastCountry);
+                if (lastEnding === 'ㄷ' || lastEnding === 'ㄹ') {
+                    const safeCountries = available.filter(c => {
+                        const first = getFirstCharInitial(c);
+                        return first !== lastEnding;
+                    });
+                    if (safeCountries.length > 0) {
+                        available = safeCountries;
+                    }
+                }
+            }
+            if (gameState.firstPlayer !== 'computer') {
+                const dEnding = available.filter(c => getLastCharInitial(c) === 'ㄷ');
+                const dToGInDEnding = dEnding.filter(c => {
+                    const first = getFirstCharInitial(c);
+                    const last = getLastCharInitial(c);
+                    return first === 'ㄷ' && last === 'ㄱ' && !gameState.usedCountries.includes(c);
+                });
+                if (dToGInDEnding.length > 0) {
+                    return dToGInDEnding[0];
+                }
+            }
+            return available[Math.floor(Math.random() * available.length)];
+        }
+        function computerTurn() {
+            const available = getAvailableCountries(gameState.usedCountries, gameState.lastCountry);
+            if (available.length === 0) {
+                if (!gameState.gameEnded) {
+                    gameState.gameEnded = true;
+                    showMessage('🎉 축하합니다! 컴퓨터가 더 이상 답할 수 없습니다. 당신이 승리했습니다!', 'success');
+                    recordWin();
+                }
+                return;
+            }
+            if (gameState.firstPlayer === 'user' && 
+                !gameState.firstTurnDone && 
+                gameState.firstTurnCountry && 
+                gameState.currentPlayer === 'computer') {
+                const firstTurnLastInitial = getLastCharInitial(gameState.firstTurnCountry);
+                if (gameState.firstTurnCountry === '그레나다' || gameState.firstTurnCountry === '과테말라') {
+                } else if (firstTurnLastInitial === 'ㄷ' || firstTurnLastInitial === 'ㄹ') {
+                    const stolenCountry = gameState.firstTurnCountry;
+                    gameState.usedCountries = [stolenCountry];
+                    gameState.lastCountry = stolenCountry;
+                    gameState.firstPlayer = 'computer'; 
+                    gameState.currentPlayer = 'computer';
+                    gameState.firstTurnDone = true;
+                    gameState.firstTurnCountry = null;
+                    addToHistory(stolenCountry + ' (뺏기)', 'computer');
+                    showMessage(`컴퓨터가 "${stolenCountry}"를 뺏었습니다! 이제 컴퓨터가 선공입니다.`, 'error');
+                    updateAvailableCountries();
+                    updateGameInfo();
+                    return;
+                }
+            }
+            // 컴퓨터 선공일 때는 조건을 만족하는 모든 단어 중 랜덤으로 선택
+            let computerChoice;
+            if (gameState.lastCountry === null) {
+                // 선공: 모든 가능한 나라 중 랜덤
+                computerChoice = available[Math.floor(Math.random() * available.length)];
+            } else {
+                // 특정 자음으로 끝나는 단어를 선택하려고 할 때, 조건을 만족하는 모든 단어 중 랜덤
+                computerChoice = available[Math.floor(Math.random() * available.length)];
+            }
+            gameState.usedCountries.push(computerChoice);
+            gameState.lastCountry = computerChoice;
+            gameState.currentPlayer = 'user';
+            if (!gameState.firstTurnDone) {
+                if (gameState.firstPlayer === 'computer') {
+                    gameState.firstTurnCountry = computerChoice;
+                }
+                gameState.firstTurnDone = true;
+            }
+            addToHistory(computerChoice, 'computer');
+            updateAvailableCountries();
+            const nextAvailable = getAvailableCountries(gameState.usedCountries, computerChoice);
+            if (nextAvailable.length === 0) {
+                if (!gameState.gameEnded) {
+                    gameState.gameEnded = true;
+                    showMessage('😢 컴퓨터가 승리했습니다! 더 이상 답할 수 있는 나라가 없습니다.', 'error');
+                    recordLoss();
+                }
+            } else {
+                const nextInitial = getLastCharInitial(computerChoice);
+                showMessage(`컴퓨터: "${computerChoice}" (다음: ${nextInitial}로 시작하는 나라)`, 'info');
+            }
+        }
+        function isLoopCountry(country, availableCountries) {
+            const firstInitial = getFirstCharInitial(country);
+            const lastInitial = getLastCharInitial(country);
+            if (!firstInitial || !lastInitial) return false;
+            const samePairCount = availableCountries.filter(c => {
+                const cFirst = getFirstCharInitial(c);
+                const cLast = getLastCharInitial(c);
+                return cFirst === firstInitial && cLast === lastInitial;
+            }).length;
+            const reversePairCount = availableCountries.filter(c => {
+                const cFirst = getFirstCharInitial(c);
+                const cLast = getLastCharInitial(c);
+                return cFirst === lastInitial && cLast === firstInitial;
+            }).length;
+            if (reversePairCount > 0) {
+                const maxMatched = Math.min(samePairCount, reversePairCount);
+                const samePairCountries = availableCountries.filter(c => {
+                    const cFirst = getFirstCharInitial(c);
+                    const cLast = getLastCharInitial(c);
+                    return cFirst === firstInitial && cLast === lastInitial;
+                }).sort(); 
+                const countryIndex = samePairCountries.indexOf(country);
+                return countryIndex < maxMatched;
+            }
+            return false;
+        }
+        function updateGameInfo() {
+            const usedCount = gameState.usedCountries.length;
+            const lastCountry = gameState.lastCountry || '-';
+            const nextInitial = gameState.lastCountry ? (getLastCharInitial(gameState.lastCountry) || '-') : '-';
+            const turnText = gameState.currentPlayer === 'user' ? '나' : '컴퓨터';
+            document.getElementById('usedCount').textContent = usedCount;
+            document.getElementById('lastCountryDisplay').textContent = lastCountry;
+            document.getElementById('nextInitialDisplay').textContent = nextInitial;
+            document.getElementById('currentTurnDisplay').textContent = `현재 차례: ${turnText}`;
+            const usedCountMobile = document.getElementById('usedCountMobile');
+            const lastCountryDisplayMobile = document.getElementById('lastCountryDisplayMobile');
+            const nextInitialDisplayMobile = document.getElementById('nextInitialDisplayMobile');
+            const currentTurnDisplayMobile = document.getElementById('currentTurnDisplayMobile');
+            if (usedCountMobile) usedCountMobile.textContent = usedCount;
+            if (lastCountryDisplayMobile) lastCountryDisplayMobile.textContent = lastCountry;
+            if (nextInitialDisplayMobile) nextInitialDisplayMobile.textContent = nextInitial;
+            if (currentTurnDisplayMobile) currentTurnDisplayMobile.textContent = `현재 차례: ${turnText}`;
+        }
+        function updateAvailableCountries() {
+            const available = getAvailableCountries(gameState.usedCountries, gameState.lastCountry);
+            const listEl = document.getElementById('availableCountriesList');
+            const listElMobile = document.getElementById('availableCountriesListMobile');
+            const availableCount = available.length;
+            document.getElementById('availableCount').textContent = availableCount;
+            const availableCountMobile = document.getElementById('availableCountMobile');
+            if (availableCountMobile) availableCountMobile.textContent = availableCount;
+            const emptyMessage = '<div style="grid-column: 1/-1; color: #666; text-align: center; padding: 20px;">더 이상 가능한 나라가 없습니다.</div>';
+            if (available.length === 0) {
+                listEl.innerHTML = emptyMessage;
+                if (listElMobile) listElMobile.innerHTML = emptyMessage;
+                updateGameInfo();
+                return;
+            }
+            const loopCountries = [];
+            const nonLoopCountries = [];
+            available.forEach(country => {
+                if (isLoopCountry(country, available)) {
+                    loopCountries.push(country);
+                } else {
+                    nonLoopCountries.push(country);
+                }
+            });
+            const sortedCountries = [...nonLoopCountries, ...loopCountries];
+            const countryHTML = sortedCountries.map(country => {
+                const isLoop = loopCountries.includes(country);
+                const tagClass = isLoop ? 'available-country-tag' : 'available-country-tag non-loop';
+                return `<div class="${tagClass}" onclick="selectCountry('${country}')">${country}</div>`;
+            }).join('');
+            listEl.innerHTML = countryHTML;
+            if (listElMobile) listElMobile.innerHTML = countryHTML;
+            updateGameInfo();
+        }
+        function selectCountry(country) {
+            document.getElementById('countryInput').value = country;
+            document.getElementById('countryInput').focus();
+        }
+        function toggleAvailableCountries() {
+            const section = document.getElementById('availableCountriesSection');
+            const btn = section.querySelector('.toggle-btn');
+            const list = document.getElementById('availableCountriesList');
+            if (section.classList.contains('hidden')) {
+                section.classList.remove('hidden');
+                btn.textContent = '숨기기';
+            } else {
+                section.classList.add('hidden');
+                btn.textContent = '보기';
+            }
+        }
+        function startNewGame() {
+            gameState.usedCountries = [];
+            gameState.lastCountry = null;
+            gameState.gameEnded = false;
+            gameState.firstTurnDone = false;
+            gameState.firstTurnCountry = null;
+            gameState.currentPlayer = gameState.firstPlayer;
+            gameHistory.length = 0; 
+            document.getElementById('history').innerHTML = '';
+            document.getElementById('countryInput').value = '';
+            showMessage('새 게임을 시작합니다! 나라 이름을 입력해주세요.', 'info');
+            updateAvailableCountries();
+            updateUndoButton();
+        }
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                submitCountry();
+            }
+        }
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                const overlay = document.getElementById('searchOverlay');
+                if (overlay.classList.contains('show')) {
+                    closeSearch();
+                }
+            }
+        });
+        function searchCountries() {
+            const input = document.getElementById('searchInput');
+            const initial = input.value.trim();
+            const resultsEl = document.getElementById('searchResults');
+            if (!initial) {
+                resultsEl.innerHTML = '';
+                return;
+            }
+            const validInitials = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+            if (!validInitials.includes(initial)) {
+                resultsEl.innerHTML = '<div style="grid-column: 1/-1; color: red;">유효한 자음을 입력해주세요 (ㄱ~ㅎ)</div>';
+                return;
+            }
+            const countries = findCountriesByInitial(initial);
+            if (countries.length === 0) {
+                resultsEl.innerHTML = '<div style="grid-column: 1/-1; color: #666;">해당 자음으로 시작하는 나라가 없습니다.</div>';
+                return;
+            }
+            resultsEl.innerHTML = countries.map(country => 
+                `<div class="country-tag">${country}</div>`
+            ).join('');
+        }
+    </script>
+</body>
+</html>
