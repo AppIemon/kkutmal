@@ -269,7 +269,7 @@
             margin: 0 auto;
         }
         .center-panel {
-            padding-bottom: 100px;
+            padding-bottom: 20px;
         }
         .hamburger-menu {
             display: none;
@@ -379,9 +379,9 @@
             .right-panel {
                 display: none;
             }
-            .center-panel {
-                padding-bottom: 100px;
-            }
+        .center-panel {
+            padding-bottom: 20px;
+        }
             .available-countries-list {
                 max-height: 400px;
             }
@@ -536,16 +536,19 @@
         .available-country-tag {
             background: #9e9e9e;
             color: white;
-            padding: 8px 12px;
-            border-radius: 5px;
-            text-align: left;
-            font-size: 14px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 16px;
+            font-weight: 500;
             cursor: pointer;
             transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
         .available-country-tag:hover {
             background: #757575;
-            transform: translateX(5px);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
         .available-country-tag.non-loop {
             background: #667eea;
@@ -553,7 +556,8 @@
         }
         .available-country-tag.non-loop:hover {
             background: #5568d3;
-            transform: translateX(5px);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
     </style>
 </head>
@@ -648,6 +652,10 @@
                             <span style="font-size: 12px; color: #666;">별도 공간에서 실행 중</span>
                         </div>
                         <div class="info-item" style="font-size: 12px; color: #666; margin-top: 10px;">
+                            <strong>게임 방법:</strong><br>
+                            오른쪽 "다음에 가능한 나라들" 목록에서 나라를 클릭하여 선택하세요.
+                        </div>
+                        <div class="info-item" style="font-size: 12px; color: #666; margin-top: 10px;">
                             <strong>자동 학습 모드:</strong><br>
                             "자동 학습 모드" 버튼을 클릭하면 양쪽 AI가 자동으로 게임을 진행하며 빠르게 학습합니다.
                         </div>
@@ -728,17 +736,8 @@
                 </div>
             </div>
         </div>
-        <div class="input-container">
-            <div class="input-group">
-                <div style="display: flex; gap: 10px; width: 100%;">
-                    <button class="panel-toggle-btn" onclick="toggleLeftPanel()">📊 통계</button>
-                    <button class="panel-toggle-btn" onclick="toggleRightPanel()">📋 나라</button>
-                </div>
-                <div style="display: flex; gap: 10px; width: 100%;">
-                    <input type="text" id="countryInput" placeholder="나라 이름을 입력하세요 (뺏기: 선공이 입력한 단어를 그대로 입력)" onkeypress="handleKeyPress(event)">
-                    <button onclick="submitCountry()">제출</button>
-                </div>
-            </div>
+        <div class="input-container" style="display: none;">
+            <!-- 입력 창 제거됨 - 사용 가능한 나라 목록에서 선택하세요 -->
         </div>
         <div id="searchOverlay" class="search-overlay" onclick="closeSearch(event)">
             <div class="search-panel" onclick="event.stopPropagation()">
@@ -2082,14 +2081,14 @@
             saveGameState();
             showMessage(itemsToRemove === 2 ? '한 턴을 무르기했습니다.' : '무르기를 실행했습니다.', 'info');
         }
-        function submitCountry() {
-            // 자동 학습 모드는 별도 공간에서 실행되므로 플레이어 게임과 충돌하지 않음
-            const input = document.getElementById('countryInput');
-            const country = input.value.trim();
+        // 나라 제출 함수 (직접 나라 이름을 매개변수로 받음)
+        function submitCountryDirect(country) {
             if (!country) {
-                showMessage('나라 이름을 입력해주세요.', 'error');
+                showMessage('나라 이름을 선택해주세요.', 'error');
                 return;
             }
+            
+            country = country.trim();
             if (gameState.firstPlayer === 'computer' && 
                 !gameState.firstTurnDone && 
                 gameState.firstTurnCountry && 
@@ -2104,7 +2103,6 @@
                 addToHistory(country + ' (뺏기)', 'user');
                 saveGameState();
                 showMessage(`"${country}"를 뺏었습니다! 이제 당신이 선공입니다.`, 'success');
-                input.value = '';
                 updateAvailableCountries();
                 updateGameInfo();
                 return;
@@ -2152,7 +2150,6 @@
                 addToHistory(country, 'user');
                 saveGameState();
                 showMessage(`좋습니다! "${country}" 다음에 올 수 있는 나라를 찾아보세요.`, 'success');
-                input.value = '';
                 updateAvailableCountries();
                 updateGameInfo();
                 setTimeout(() => {
@@ -2846,8 +2843,8 @@
             if (gameState.currentPlayer !== 'user') {
                 return;
             }
-            document.getElementById('countryInput').value = country;
-            submitCountry();
+            // 직접 나라 제출
+            submitCountryDirect(country);
         }
         function toggleAvailableCountries() {
             const section = document.getElementById('availableCountriesSection');
@@ -2905,11 +2902,7 @@
             updateAvailableCountries();
             updateUndoButton();
         }
-        function handleKeyPress(event) {
-            if (event.key === 'Enter') {
-                submitCountry();
-            }
-        }
+        // 입력 창 제거됨 - 사용 가능한 나라 목록에서 선택
         document.addEventListener('keydown', function(event) {
             if (event.key === 'Escape') {
                 const overlay = document.getElementById('searchOverlay');
