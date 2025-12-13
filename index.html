@@ -1295,13 +1295,18 @@
                     return;
                 }
             }
-            // 컴퓨터 선공일 때는 조건을 만족하는 모든 단어 중 랜덤으로 선택
             let computerChoice;
             if (gameState.lastCountry === null) {
-                // 선공: 모든 가능한 나라 중 랜덤
-                computerChoice = available[Math.floor(Math.random() * available.length)];
+                const safeCountries = available.filter(country => {
+                    const lastInitial = getLastCharInitial(country);
+                    return country === '과테말라' || (lastInitial !== 'ㄷ' && lastInitial !== 'ㄹ');
+                });
+                if (safeCountries.length > 0) {
+                    computerChoice = safeCountries[Math.floor(Math.random() * safeCountries.length)];
+                } else {
+                    computerChoice = available[Math.floor(Math.random() * available.length)];
+                }
             } else {
-                // 특정 자음으로 끝나는 단어를 선택하려고 할 때, 조건을 만족하는 모든 단어 중 랜덤
                 computerChoice = available[Math.floor(Math.random() * available.length)];
             }
             gameState.usedCountries.push(computerChoice);
